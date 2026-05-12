@@ -7,12 +7,21 @@
 
 ## Authentication
 
-- **Session (first-party):** cookie session (not primary for REST clients).
-- **API keys (premium):** `Authorization: Bearer <api_key>` when `ApiKey` model and middleware are enabled for the tenant.
+Tenant routes accept **either** of the following:
+
+1. **Bearer API key (integrations, scripts):**
+   - Header: `Authorization: Bearer ssk_<secret>` (full token string; only values with the `ssk_` prefix are treated as API keys).
+   - The server stores `SHA-256(utf8(full_token))` and looks up `ApiKey` by `hashedKey` (same algorithm as key creation in the admin UI).
+   - The key’s `tenantId` must match the `tenantId` path segment; optional `expiresAt` is enforced.
+   - Requires the tenant **premium** feature `apiKeys` (same gate as creating keys in-app). If the feature is off, valid-looking keys still receive `403`.
+
+2. **Session (browser / first-party):** NextAuth session cookie. The user must have an active `TenantUser` row for the path `tenantId`.
+
+If there is no `Authorization: Bearer ssk_…` header, the handler uses **session only**. If a client sends `Bearer ssk_…` and the key is invalid or expired, the server returns **401** (it does not fall back to the session cookie for that request).
 
 ## Tenant scoping
 
-Routes include `tenantId` (UUID) in the path unless otherwise noted. The server must verify the caller has access to that tenant (session membership or valid API key).
+Routes include `tenantId` (UUID) in the path unless otherwise noted. The server verifies access with the rules above (active tenant membership for session, or a valid non-expired API key for the same tenant).
 
 ## Error envelope
 
