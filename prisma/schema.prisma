@@ -1,0 +1,499 @@
+// StaffStack — Prisma schema (PostgreSQL / Neon)
+// Migrations: `npx prisma migrate dev` (local) · `npx prisma migrate deploy` (CI/prod)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum RoleKey {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  SITE_ADMIN
+  MANAGER
+  SCHEDULER
+  EMPLOYEE
+  VIEWER
+}
+
+enum ShiftStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum SwapStatus {
+  REQUESTED
+  APPROVED
+  DENIED
+  CANCELLED
+}
+
+enum PtoStatus {
+  REQUESTED
+  APPROVED
+  DENIED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+// -----------------------------------------------------------------------------
+// Auth.js models + application User
+// -----------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String? // credentials provider; null if OAuth-only
+  isPlatformStaff Boolean @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  tenantUsers          TenantUser[]
+  notificationPrefs  NotificationPreference[]
+  auditLogs            AuditLog[] @relation("AuditActor")
+}
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique
+  userId       String   @db.Uuid
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// -----------------------------------------------------------------------------
+// Tenancy & org structure
+// -----------------------------------------------------------------------------
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  settings  Json     @default("{}")
+  features  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sites            Site[]
+  tenantUsers      TenantUser[]
+  shifts           Shift[]
+  shiftTemplates   ShiftTemplate[]
+  reminderTemplates ReminderTemplate[]
+  auditLogs        AuditLog[]
+  fileObjects      FileObject[]
+  apiKeys          ApiKey[]
+  stripeCustomer   StripeCustomer?
+  subscription     Subscription?
+  shiftSwaps       ShiftSwap[]
+  ptoRequests      PtoRequest[]
+}
+
+model Site {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  name      String
+  timezone  String
+  address   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  departments   Department[]
+  memberships   SiteMembership[]
+  shifts          Shift[]
+  shiftTemplates  ShiftTemplate[]
+
+  @@index([tenantId])
+}
+
+model Department {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  siteId    String   @db.Uuid
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  shifts    Shift[]
+
+  @@index([tenantId, siteId])
+}
+
+model TenantUser {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  userId    String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships           SiteMembership[]
+  notificationPreference NotificationPreference?
+  availabilityRules     AvailabilityRule[]
+  availabilityExceptions AvailabilityException[]
+  ptoRequests             PtoRequest[]
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+}
+
+model SiteMembership {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantUserId String   @db.Uuid
+  siteId       String   @db.Uuid
+  role         RoleKey
+  permissions  String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenantUser TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade)
+  site       Site       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantUserId, siteId])
+  @@index([siteId])
+}
+
+// -----------------------------------------------------------------------------
+// Scheduling
+// -----------------------------------------------------------------------------
+
+model ShiftTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  siteId      String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site        Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name        String
+  payload     Json     @default("{}") // duration, title pattern, RRULE seed, etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  shifts      Shift[]
+
+  @@index([tenantId, siteId])
+}
+
+model Shift {
+  id               String      @id @default(uuid()) @db.Uuid
+  tenantId         String      @db.Uuid
+  siteId           String      @db.Uuid
+  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site             Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  departmentId     String?     @db.Uuid
+  department       Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  title            String
+  startsAt         DateTime
+  endsAt           DateTime
+  status           ShiftStatus @default(DRAFT)
+  recurrenceRule   String?
+  recurrenceEnd    DateTime?
+  templateId       String?     @db.Uuid
+  template         ShiftTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  requiredHeadcount Int?
+  metadata         Json        @default("{}")
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+
+  assignments ShiftAssignment[]
+  swapsFrom   ShiftSwap[] @relation("SwapFromShift")
+  swapsTo     ShiftSwap[] @relation("SwapToShift")
+
+  @@index([tenantId, siteId, startsAt])
+  @@index([tenantId, startsAt])
+}
+
+model ShiftAssignment {
+  id                   String    @id @default(uuid()) @db.Uuid
+  tenantId             String    @db.Uuid
+  shiftId              String    @db.Uuid
+  userId               String    @db.Uuid
+  shift                Shift     @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  acknowledgedAt       DateTime?
+  checkInAt            DateTime?
+  checkOutAt           DateTime?
+  noShowMarkedAt       DateTime?
+  noShowMarkedByUserId String?   @db.Uuid
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  swapsRequested ShiftSwap[] @relation("SwapRequesterAssignment")
+  swapsTarget    ShiftSwap[] @relation("SwapTargetAssignment")
+  checkInTokens  CheckInToken[]
+
+  @@unique([shiftId, userId])
+  @@index([tenantId, userId])
+}
+
+model ShiftSwap {
+  id                     String     @id @default(uuid()) @db.Uuid
+  tenantId               String     @db.Uuid
+  tenant                 Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  status                 SwapStatus @default(REQUESTED)
+  requesterAssignmentId  String     @db.Uuid
+  targetAssignmentId     String?    @db.Uuid // null = request to take open slot / manager assigns
+  fromShiftId            String     @db.Uuid
+  toShiftId              String     @db.Uuid
+  message                String?    @db.Text
+  reviewedByUserId       String?    @db.Uuid
+  reviewedAt             DateTime?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  requesterAssignment ShiftAssignment @relation("SwapRequesterAssignment", fields: [requesterAssignmentId], references: [id], onDelete: Cascade)
+  targetAssignment    ShiftAssignment? @relation("SwapTargetAssignment", fields: [targetAssignmentId], references: [id], onDelete: SetNull)
+  fromShift           Shift           @relation("SwapFromShift", fields: [fromShiftId], references: [id], onDelete: Cascade)
+  toShift             Shift           @relation("SwapToShift", fields: [toShiftId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+}
+
+// -----------------------------------------------------------------------------
+// Availability & PTO
+// -----------------------------------------------------------------------------
+
+model AvailabilityRule {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantUserId String   @db.Uuid
+  dayOfWeek    Int // 0 = Sunday .. 6 = Saturday
+  startMinute  Int // minutes from midnight local interpretation in UI
+  endMinute    Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenantUser TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantUserId])
+}
+
+model AvailabilityException {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantUserId String   @db.Uuid
+  date         DateTime @db.Date
+  available    Boolean  @default(false)
+  note         String?
+  createdAt    DateTime @default(now())
+
+  tenantUser TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantUserId, date])
+}
+
+model PtoRequest {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantUserId String    @db.Uuid
+  startsOn     DateTime  @db.Date
+  endsOn       DateTime  @db.Date
+  status       PtoStatus @default(REQUESTED)
+  reason       String?
+  decidedByUserId String? @db.Uuid
+  decidedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenantUser TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+}
+
+// -----------------------------------------------------------------------------
+// Notifications & reminders
+// -----------------------------------------------------------------------------
+
+model NotificationPreference {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  tenantUserId  String   @unique @db.Uuid
+  emailEnabled  Boolean  @default(true)
+  smsEnabled    Boolean  @default(false)
+  quietHours    Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantUser TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ReminderTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  channel     String // email | sms
+  offsetMinutes Int    @default(-60) // negative = before shift start
+  body        String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  scheduled ReminderScheduled[]
+
+  @@index([tenantId])
+}
+
+model ReminderScheduled {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  templateId  String   @db.Uuid
+  shiftId     String   @db.Uuid
+  userId      String   @db.Uuid
+  sendAt      DateTime
+  idempotencyKey String @unique
+  status      String   @default("pending") // pending | sent | failed | cancelled
+  lastError   String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  template ReminderTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, sendAt])
+  @@index([status, sendAt])
+}
+
+// -----------------------------------------------------------------------------
+// Audit, files, API keys, billing
+// -----------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String?  @db.Uuid
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actorUserId String?  @db.Uuid
+  actor       User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String
+  entityType  String
+  entityId    String?  @db.Uuid
+  metadata    Json     @default("{}")
+  ip          String?
+  userAgent   String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model FileObject {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerUserId String?  @db.Uuid
+  name        String
+  mimeType    String
+  byteSize    Int
+  data        Bytes?
+  storageKey  String? // future object storage
+  sha256      String
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model ApiKey {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  hashedKey   String    @unique
+  prefix      String
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId])
+}
+
+model StripeCustomer {
+  id               String @id @default(uuid()) @db.Uuid
+  tenantId         String @unique @db.Uuid
+  tenant           Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stripeCustomerId String @unique
+  createdAt        DateTime @default(now())
+}
+
+model Subscription {
+  id                   String              @id @default(uuid()) @db.Uuid
+  tenantId             String              @unique @db.Uuid
+  tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String?             @unique
+  status               SubscriptionStatus  @default(INCOMPLETE)
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+}
+
+model ProcessedStripeEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventId   String   @unique
+  createdAt DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------------
+// Kiosk / QR check-in (future-ready)
+// -----------------------------------------------------------------------------
+
+model CheckInToken {
+  id            String    @id @default(uuid()) @db.Uuid
+  assignmentId  String    @db.Uuid
+  assignment    ShiftAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  tokenHash     String    @unique
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([assignmentId])
+}
