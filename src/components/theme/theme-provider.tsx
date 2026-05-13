@@ -3,7 +3,7 @@
 import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
 import { useEffect } from "react";
 
-import { APP_THEMES } from "@/lib/ui-theme";
+import { APP_THEMES, DARK_APP_THEMES, isAppTheme } from "@/lib/ui-theme";
 
 function DarkClassSync() {
   const { resolvedTheme } = useTheme();
@@ -11,7 +11,8 @@ function DarkClassSync() {
   useEffect(() => {
     if (!resolvedTheme) return;
     const root = document.documentElement;
-    if (resolvedTheme === "night") root.classList.add("dark");
+    const isDark = isAppTheme(resolvedTheme) && DARK_APP_THEMES.has(resolvedTheme);
+    if (isDark) root.classList.add("dark");
     else root.classList.remove("dark");
   }, [resolvedTheme]);
 

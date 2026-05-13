@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Label } from "@/components/ui/label";
 import type { AppTheme } from "@/lib/ui-theme";
-import { APP_THEMES } from "@/lib/ui-theme";
+import { APP_THEMES, APP_THEME_LABELS } from "@/lib/ui-theme";
 
 export function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
@@ -18,7 +18,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   if (!mounted) {
     return (
       <div className={className}>
-        <div className="h-10 w-[140px] rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900" />
+        <div className="h-10 w-[140px] rounded-md border border-[color:var(--ss-border)] bg-[color:var(--ss-muted)]/40" />
       </div>
     );
   }
@@ -32,11 +32,11 @@ export function ThemeToggle({ className }: { className?: string }) {
         id="theme-select"
         value={(theme as AppTheme) ?? "corporate"}
         onChange={(e) => setTheme(e.target.value)}
-        className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+        className="h-10 rounded-md border border-[color:var(--ss-border)] bg-[color:var(--ss-surface)] px-3 text-sm text-[color:var(--ss-foreground)] shadow-sm transition-colors hover:border-[color:var(--ss-accent)]/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--ss-accent)]"
       >
         {APP_THEMES.map((t) => (
           <option key={t} value={t}>
-            {t === "corporate" ? "Corporate" : t === "day" ? "Day" : "Night"}
+            {APP_THEME_LABELS[t]}
           </option>
         ))}
       </select>

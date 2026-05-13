@@ -1,26 +1,171 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* -----------------------------------------------------------------------------
+ * Theme tokens
+ * Themes are applied as classes on the <html> element by next-themes.
+ * `corporate` is the default light surface.
+ * --------------------------------------------------------------------------- */
+
+:root,
+html.corporate {
+  --ss-background: #f5f7fb;
+  --ss-surface: #ffffff;
+  --ss-surface-2: #f1f4fa;
+  --ss-foreground: #0b1220;
+  --ss-muted: #e5e9f2;
+  --ss-muted-foreground: #54607a;
+  --ss-border: #d8dee9;
+  --ss-accent: #2563eb;
+  --ss-accent-foreground: #ffffff;
+  --ss-ring: rgba(37, 99, 235, 0.45);
+  --ss-gradient-from: #2563eb;
+  --ss-gradient-via: #6366f1;
+  --ss-gradient-to: #06b6d4;
+  --ss-glow: rgba(99, 102, 241, 0.25);
+  color-scheme: light;
+}
+
+html.day {
+  --ss-background: #fff9ec;
+  --ss-surface: #ffffff;
+  --ss-surface-2: #fff3d6;
+  --ss-foreground: #2a1d05;
+  --ss-muted: #fbe7b8;
+  --ss-muted-foreground: #6b5320;
+  --ss-border: #f0d68c;
+  --ss-accent: #d97706;
+  --ss-accent-foreground: #ffffff;
+  --ss-ring: rgba(217, 119, 6, 0.4);
+  --ss-gradient-from: #f59e0b;
+  --ss-gradient-via: #fb7185;
+  --ss-gradient-to: #f97316;
+  --ss-glow: rgba(251, 146, 60, 0.3);
+  color-scheme: light;
+}
+
+html.night {
+  --ss-background: #0a0d14;
+  --ss-surface: #11151f;
+  --ss-surface-2: #161b27;
+  --ss-foreground: #e7ecf5;
+  --ss-muted: #1c2230;
+  --ss-muted-foreground: #94a0b8;
+  --ss-border: #232a3a;
+  --ss-accent: #818cf8;
+  --ss-accent-foreground: #0a0d14;
+  --ss-ring: rgba(129, 140, 248, 0.4);
+  --ss-gradient-from: #60a5fa;
+  --ss-gradient-via: #818cf8;
+  --ss-gradient-to: #c084fc;
+  --ss-glow: rgba(129, 140, 248, 0.3);
+  color-scheme: dark;
+}
+
+html.neon {
+  --ss-background: #06010f;
+  --ss-surface: #0d0420;
+  --ss-surface-2: #150830;
+  --ss-foreground: #f5e9ff;
+  --ss-muted: #1c0b3a;
+  --ss-muted-foreground: #c4a7ff;
+  --ss-border: #3a1769;
+  --ss-accent: #ff2bd6;
+  --ss-accent-foreground: #06010f;
+  --ss-ring: rgba(255, 43, 214, 0.5);
+  --ss-gradient-from: #ff2bd6;
+  --ss-gradient-via: #8b5cf6;
+  --ss-gradient-to: #22d3ee;
+  --ss-glow: rgba(255, 43, 214, 0.4);
+  color-scheme: dark;
+}
+
+html.cyberpunk {
+  --ss-background: #0b0a05;
+  --ss-surface: #14110a;
+  --ss-surface-2: #1d1810;
+  --ss-foreground: #fff3b0;
+  --ss-muted: #221c0e;
+  --ss-muted-foreground: #c9a648;
+  --ss-border: #3b2f12;
+  --ss-accent: #fde047;
+  --ss-accent-foreground: #0b0a05;
+  --ss-ring: rgba(253, 224, 71, 0.5);
+  --ss-gradient-from: #fde047;
+  --ss-gradient-via: #f472b6;
+  --ss-gradient-to: #a855f7;
+  --ss-glow: rgba(253, 224, 71, 0.35);
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--ss-background);
+  --color-foreground: var(--ss-foreground);
+  --color-surface: var(--ss-surface);
+  --color-surface-2: var(--ss-surface-2);
+  --color-muted: var(--ss-muted);
+  --color-muted-foreground: var(--ss-muted-foreground);
+  --color-border: var(--ss-border);
+  --color-accent: var(--ss-accent);
+  --color-accent-foreground: var(--ss-accent-foreground);
+  --color-ring: var(--ss-ring);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  background: var(--ss-background);
+  color: var(--ss-foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  transition:
+    background-color 240ms ease,
+    color 240ms ease;
+}
+
+/* Reusable gradient text helper for the marketing hero */
+.ss-gradient-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--ss-gradient-from),
+    var(--ss-gradient-via),
+    var(--ss-gradient-to)
+  );
+  background-size: 200% 200%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: ss-gradient-shift 9s ease-in-out infinite;
+}
+
+@keyframes ss-gradient-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.ss-grid-bg {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--ss-border) 60%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--ss-border) 60%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ss-gradient-text {
+    animation: none;
+  }
 }
