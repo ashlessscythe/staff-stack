@@ -8,8 +8,9 @@ export async function sendEmail(opts: { to: string; subject: string; html: strin
     return { skipped: true as const };
   }
   const resend = new Resend(key);
+  const from = process.env.RESEND_FROM ?? "StaffStack <onboarding@resend.dev>";
   await resend.emails.send({
-    from: "StaffStack <onboarding@resend.dev>",
+    from,
     to: opts.to,
     subject: opts.subject,
     html: opts.html,

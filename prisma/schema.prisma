@@ -74,6 +74,18 @@ model User {
   notificationPrefs  NotificationPreference[]
   reminderScheduled    ReminderScheduled[]
   auditLogs            AuditLog[] @relation("AuditActor")
+  passwordResetTokens  PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Account {

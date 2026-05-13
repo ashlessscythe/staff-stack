@@ -3,6 +3,7 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/db";
+import { sendRegistrationPendingEmail } from "@/server/email/transactional";
 
 const registerSchema = z.object({
   name: z
@@ -49,6 +50,10 @@ export async function registerUserAction(raw: unknown): Promise<RegisterResult> 
       name: name ?? null,
       passwordHash,
     },
+  });
+
+  void sendRegistrationPendingEmail({ to: email, name }).catch((err) => {
+    console.warn("[register] registration email failed:", err);
   });
 
   return { ok: true };
