@@ -72,6 +72,7 @@ model User {
 
   tenantUsers          TenantUser[]
   notificationPrefs  NotificationPreference[]
+  reminderScheduled    ReminderScheduled[]
   auditLogs            AuditLog[] @relation("AuditActor")
 }
 
@@ -248,9 +249,10 @@ model Shift {
   updatedAt        DateTime    @updatedAt
   deletedAt        DateTime?
 
-  assignments ShiftAssignment[]
-  swapsFrom   ShiftSwap[] @relation("SwapFromShift")
-  swapsTo     ShiftSwap[] @relation("SwapToShift")
+  assignments         ShiftAssignment[]
+  reminderScheduled   ReminderScheduled[]
+  swapsFrom           ShiftSwap[] @relation("SwapFromShift")
+  swapsTo             ShiftSwap[] @relation("SwapToShift")
 
   @@index([tenantId, siteId, startsAt])
   @@index([tenantId, startsAt])
@@ -361,6 +363,7 @@ model NotificationPreference {
   tenantUserId  String   @unique @db.Uuid
   emailEnabled  Boolean  @default(true)
   smsEnabled    Boolean  @default(false)
+  phoneE164     String? // E.164 when smsEnabled
   quietHours    Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -384,6 +387,7 @@ model ReminderTemplate {
 
   scheduled ReminderScheduled[]
 
+  @@unique([tenantId, name], map: "ReminderTemplate_tenantId_name_key")
   @@index([tenantId])
 }
 
@@ -401,6 +405,8 @@ model ReminderScheduled {
   updatedAt   DateTime @updatedAt
 
   template ReminderTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  shift    Shift            @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, sendAt])
   @@index([status, sendAt])
