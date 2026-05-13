@@ -1,26 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { authenticateTenantApiRequest } from "@/lib/api-auth";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: Request, { params }: { params: Promise<{ tenantId: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json(
-      { error: { code: "UNAUTHORIZED", message: "Sign in required" } },
-      { status: 401 },
-    );
-  }
   const { tenantId } = await params;
-  const tu = await prisma.tenantUser.findUnique({
-    where: { tenantId_userId: { tenantId, userId: session.user.id } },
-  });
-  if (!tu?.isActive) {
-    return NextResponse.json(
-      { error: { code: "FORBIDDEN", message: "Tenant access denied" } },
-      { status: 403 },
-    );
-  }
+  const authResult = await authenticateTenantApiRequest(req, tenantId);
+  if (!authResult.ok) return authResult.response;
 
   const { searchParams } = new URL(req.url);
   const siteId = searchParams.get("siteId");
