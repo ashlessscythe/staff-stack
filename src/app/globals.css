@@ -114,6 +114,14 @@ html.cyberpunk {
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  /*
+   * Reserve scrollbar space so navigation between pages of different heights
+   * doesn't shift content horizontally when a vertical scrollbar appears/disappears.
+   */
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--ss-background);
   color: var(--ss-foreground);

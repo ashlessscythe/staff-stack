@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { AuthHeader } from "@/components/auth/auth-header";
 import { SignupForm } from "@/components/auth/signup-form";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { auth } from "@/auth";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +14,9 @@ export default async function SignupPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-[color:var(--ss-background)] p-4 text-[color:var(--ss-foreground)]">
-      <header className="flex items-center justify-end px-2 pb-6 pt-2">
-        <ThemeToggle />
-      </header>
-      <div className="flex flex-1 items-center justify-center">
+    <div className="relative flex min-h-screen flex-col bg-[color:var(--ss-background)] text-[color:var(--ss-foreground)]">
+      <AuthHeader cta={{ href: "/login", label: "Sign in" }} />
+      <div className="flex flex-1 items-center justify-center px-4 pb-10">
         <Suspense
           fallback={<div className="text-sm text-[color:var(--ss-muted-foreground)]">Loading…</div>}
         >
