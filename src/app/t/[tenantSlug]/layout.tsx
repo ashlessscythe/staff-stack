@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { TenantUserMenu } from "@/components/tenant/tenant-user-menu";
 import { requireTenantShell } from "@/server/tenant-context";
 
 export default async function TenantLayout({
@@ -22,44 +23,47 @@ export default async function TenantLayout({
               {shell.tenant.name}
             </p>
           </div>
-          <nav className="flex flex-wrap gap-3 text-sm">
-            <Link
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              href={`/t/${tenantSlug}/dashboard`}
-            >
-              Dashboard
-            </Link>
-            <Link
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              href={`/t/${tenantSlug}/schedule`}
-            >
-              Schedule
-            </Link>
-            <Link
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              href={`/t/${tenantSlug}/swaps`}
-            >
-              Swaps
-            </Link>
-            <Link
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              href={`/t/${tenantSlug}/availability`}
-            >
-              Availability
-            </Link>
-            <Link
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              href={`/t/${tenantSlug}/files`}
-            >
-              Files
-            </Link>
-            <Link
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              href={`/t/${tenantSlug}/admin/api-keys`}
-            >
-              API keys
-            </Link>
-          </nav>
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+            <nav className="flex flex-wrap items-center gap-3 text-sm">
+              <Link
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                href={`/t/${tenantSlug}/dashboard`}
+              >
+                Dashboard
+              </Link>
+              <Link
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                href={`/t/${tenantSlug}/schedule`}
+              >
+                Schedule
+              </Link>
+              <Link
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                href={`/t/${tenantSlug}/swaps`}
+              >
+                Swaps
+              </Link>
+              <Link
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                href={`/t/${tenantSlug}/availability`}
+              >
+                Availability
+              </Link>
+              <Link
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                href={`/t/${tenantSlug}/files`}
+              >
+                Files
+              </Link>
+              <Link
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                href={`/t/${tenantSlug}/admin/api-keys`}
+              >
+                API keys
+              </Link>
+            </nav>
+            <TenantUserMenu user={shell.user} />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>

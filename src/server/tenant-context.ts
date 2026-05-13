@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 export type TenantShell = {
   tenant: { id: string; name: string; slug: string; settings: unknown; features: unknown };
   tenantUser: { id: string; userId: string };
+  user: { name: string | null; email: string | null };
   memberships: {
     siteId: string;
     siteName: string;
@@ -34,6 +35,10 @@ export async function requireTenantShell(tenantSlug: string): Promise<TenantShel
   return {
     tenant,
     tenantUser: { id: tenantUser.id, userId: tenantUser.userId },
+    user: {
+      name: session.user.name ?? null,
+      email: session.user.email ?? null,
+    },
     memberships: tenantUser.memberships.map((m) => ({
       siteId: m.siteId,
       siteName: m.site.name,
