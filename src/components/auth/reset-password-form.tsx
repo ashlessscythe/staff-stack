@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -35,7 +35,6 @@ type ResetPasswordFormProps = {
 };
 
 export function ResetPasswordForm({ tokenState, turnstileSiteKey }: ResetPasswordFormProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token")?.trim() ?? "", [searchParams]);
   const [error, setError] = useState<string | null>(null);
@@ -66,8 +65,7 @@ export function ResetPasswordForm({ tokenState, turnstileSiteKey }: ResetPasswor
       setError(res.error);
       return;
     }
-    router.push("/login?reset=1");
-    router.refresh();
+    window.location.assign("/login?reset=1");
   });
 
   if (tokenState === "missing" || tokenState === "malformed") {

@@ -3,7 +3,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -34,7 +33,6 @@ type SignupFormProps = {
 };
 
 export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const resetTurnstileRef = useRef<(() => void) | null>(null);
@@ -74,8 +72,7 @@ export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
       setError("Account created, but sign in failed. Please try logging in.");
       return;
     }
-    router.push("/account/pending");
-    router.refresh();
+    window.location.assign("/account/pending");
   });
 
   return (

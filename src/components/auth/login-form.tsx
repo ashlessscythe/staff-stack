@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -20,8 +20,14 @@ const schema = z.object({
 
 type Form = z.infer<typeof schema>;
 
+function postLoginPath(callbackUrl: string | null): string {
+  const fallback = "/";
+  if (!callbackUrl) return fallback;
+  if (!callbackUrl.startsWith("/") || callbackUrl.startsWith("//")) return fallback;
+  return callbackUrl;
+}
+
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const resetOk = searchParams.get("reset") === "1";
   const [error, setError] = useState<string | null>(null);
@@ -38,9 +44,8 @@ export function LoginForm() {
       setError("Invalid email or password.");
       return;
     }
-    const next = searchParams.get("callbackUrl") ?? "/";
-    router.push(next);
-    router.refresh();
+    // Hard navigation: client router can hang across server `redirect()` chains after credentials sign-in.
+    window.location.assign(postLoginPath(searchParams.get("callbackUrl")));
   });
 
   return (
