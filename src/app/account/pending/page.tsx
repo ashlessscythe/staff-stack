@@ -1,10 +1,10 @@
 import { Mailbox } from "lucide-react";
 import { redirect } from "next/navigation";
 
+import { SignOutForm } from "@/components/auth/sign-out-form";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
-import { signOutAction } from "@/server/actions/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -42,14 +42,12 @@ export default async function AccountPendingPage() {
             but it isn&rsquo;t attached to a workspace yet. StaffStack workspaces are invite-only —
             ask your admin to send you an invite, and your dashboard will appear here automatically.
           </p>
-          <form action={signOutAction} className="mt-8">
-            <button
-              type="submit"
-              className="inline-flex h-10 items-center justify-center rounded-md border border-[color:var(--ss-border)] bg-[color:var(--ss-surface)] px-5 text-sm font-medium text-[color:var(--ss-foreground)] transition-colors hover:bg-[color:var(--ss-surface-2)]"
-            >
-              Sign out
-            </button>
-          </form>
+          <SignOutForm
+            className="mt-8"
+            buttonClassName="inline-flex h-10 items-center justify-center rounded-md border border-[color:var(--ss-border)] bg-[color:var(--ss-surface)] px-5 text-sm font-medium text-[color:var(--ss-foreground)] transition-colors hover:bg-[color:var(--ss-surface-2)]"
+          >
+            Sign out
+          </SignOutForm>
         </div>
       </main>
     </div>

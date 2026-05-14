@@ -3,8 +3,8 @@
 import { UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { SignOutForm } from "@/components/auth/sign-out-form";
 import { cn } from "@/lib/utils";
-import { signOutAction } from "@/server/actions/auth";
 
 type TenantUserMenuProps = {
   user: { name: string | null; email: string | null };
@@ -71,15 +71,12 @@ export function TenantUserMenu({ user, className }: TenantUserMenuProps) {
               <p className="text-zinc-500 dark:text-zinc-400">Signed in</p>
             )}
           </div>
-          <form action={signOutAction}>
-            <button
-              type="submit"
-              className="w-full px-3 py-2 text-left text-zinc-700 hover:bg-zinc-50 dark:text-zinc-200 dark:hover:bg-zinc-900"
-              role="menuitem"
-            >
-              Sign out
-            </button>
-          </form>
+          <SignOutForm
+            buttonClassName="w-full px-3 py-2 text-left text-zinc-700 hover:bg-zinc-50 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            buttonProps={{ role: "menuitem" }}
+          >
+            Sign out
+          </SignOutForm>
         </div>
       ) : null}
     </div>
