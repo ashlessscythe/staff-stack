@@ -27,6 +27,23 @@ function hashResetToken(raw: string): string {
 
 const RESET_TTL_MS = 60 * 60 * 1000;
 
+export type ResetPasswordTokenState = "missing" | "malformed" | "invalid" | "valid";
+
+/**
+ * Used by the reset-password page so a consumed or expired token does not still show the form.
+ */
+export async function getResetPasswordTokenState(
+  rawToken: string | undefined,
+): Promise<ResetPasswordTokenState> {
+  const t = rawToken?.trim() ?? "";
+  if (!t) return "missing";
+  if (t.length !== 64) return "malformed";
+  const tokenHash = hashResetToken(t);
+  const row = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+  if (!row || row.expiresAt < new Date()) return "invalid";
+  return "valid";
+}
+
 export type PasswordResetRequestResult =
   | { ok: true }
   | { ok: false; error: string; field?: "email" };

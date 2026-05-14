@@ -37,7 +37,15 @@ vi.mock("argon2", () => ({
   default: { hash: vi.fn().mockResolvedValue("argon-mock-hash"), verify: vi.fn() },
 }));
 
-import { completePasswordResetAction, requestPasswordResetAction } from "./password-reset";
+vi.mock("@/server/turnstile-verify", () => ({
+  verifyTurnstileOrThrow: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
+import {
+  completePasswordResetAction,
+  getResetPasswordTokenState,
+  requestPasswordResetAction,
+} from "./password-reset";
 
 describe("requestPasswordResetAction", () => {
   beforeEach(() => {
@@ -192,5 +200,43 @@ describe("completePasswordResetAction", () => {
         entityId: userId,
       }),
     );
+  });
+});
+
+describe("getResetPasswordTokenState", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    hoisted.prisma.passwordResetToken.findUnique.mockReset();
+  });
+
+  it("returns missing when token is undefined", async () => {
+    expect(await getResetPasswordTokenState(undefined)).toBe("missing");
+    expect(hoisted.prisma.passwordResetToken.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns malformed when token length is not 64", async () => {
+    expect(await getResetPasswordTokenState("short")).toBe("malformed");
+    expect(hoisted.prisma.passwordResetToken.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns invalid when no matching row", async () => {
+    hoisted.prisma.passwordResetToken.findUnique.mockResolvedValue(null);
+    const raw = "aa".repeat(32);
+    expect(await getResetPasswordTokenState(raw)).toBe("invalid");
+    expect(hoisted.prisma.passwordResetToken.findUnique).toHaveBeenCalled();
+  });
+
+  it("returns invalid when token is expired", async () => {
+    hoisted.prisma.passwordResetToken.findUnique.mockResolvedValue({
+      expiresAt: new Date(Date.now() - 1000),
+    });
+    expect(await getResetPasswordTokenState("aa".repeat(32))).toBe("invalid");
+  });
+
+  it("returns valid when token row exists and is not expired", async () => {
+    hoisted.prisma.passwordResetToken.findUnique.mockResolvedValue({
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    expect(await getResetPasswordTokenState("aa".repeat(32))).toBe("valid");
   });
 });

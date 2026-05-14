@@ -12,7 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { completePasswordResetAction } from "@/server/actions/password-reset";
+import {
+  completePasswordResetAction,
+  type ResetPasswordTokenState,
+} from "@/server/actions/password-reset";
 
 const schema = z
   .object({
@@ -27,10 +30,11 @@ const schema = z
 type Form = z.infer<typeof schema>;
 
 type ResetPasswordFormProps = {
+  tokenState: ResetPasswordTokenState;
   turnstileSiteKey?: string;
 };
 
-export function ResetPasswordForm({ turnstileSiteKey }: ResetPasswordFormProps) {
+export function ResetPasswordForm({ tokenState, turnstileSiteKey }: ResetPasswordFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token")?.trim() ?? "", [searchParams]);
@@ -44,7 +48,7 @@ export function ResetPasswordForm({ turnstileSiteKey }: ResetPasswordFormProps) 
 
   const onSubmit = form.handleSubmit(async (data) => {
     setError(null);
-    if (!token || token.length !== 64) {
+    if (tokenState !== "valid" || !token || token.length !== 64) {
       setError("This reset link is missing or invalid.");
       return;
     }
@@ -66,7 +70,7 @@ export function ResetPasswordForm({ turnstileSiteKey }: ResetPasswordFormProps) 
     router.refresh();
   });
 
-  if (!token || token.length !== 64) {
+  if (tokenState === "missing" || tokenState === "malformed") {
     return (
       <Card className="w-full max-w-md border-[color:var(--ss-border)] bg-[color:var(--ss-surface)] text-[color:var(--ss-foreground)]">
         <CardHeader>
@@ -82,6 +86,34 @@ export function ResetPasswordForm({ turnstileSiteKey }: ResetPasswordFormProps) 
             className="text-sm font-medium text-[color:var(--ss-accent)] hover:underline"
           >
             Request a new link
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (tokenState === "invalid") {
+    return (
+      <Card className="w-full max-w-md border-[color:var(--ss-border)] bg-[color:var(--ss-surface)] text-[color:var(--ss-foreground)]">
+        <CardHeader>
+          <CardTitle>Link no longer valid</CardTitle>
+          <CardDescription>
+            This reset link has expired or was already used. If you still need to change your
+            password, request a new link.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <Link
+            href="/forgot-password"
+            className="text-sm font-medium text-[color:var(--ss-accent)] hover:underline"
+          >
+            Request a new link
+          </Link>
+          <Link
+            href="/login"
+            className="text-sm font-medium text-[color:var(--ss-muted-foreground)] hover:underline"
+          >
+            Back to sign in
           </Link>
         </CardContent>
       </Card>

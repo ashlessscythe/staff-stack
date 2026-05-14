@@ -38,3 +38,4 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+test-results/.last-run.json
