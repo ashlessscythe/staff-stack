@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import { sendRegistrationPendingEmail } from "@/server/email/transactional";
+import { verifyTurnstileOrThrow } from "@/server/turnstile-verify";
 
 const registerSchema = z.object({
   name: z
@@ -14,6 +15,7 @@ const registerSchema = z.object({
     .transform((v) => (v && v.length > 0 ? v : undefined)),
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8, "Password must be at least 8 characters.").max(200),
+  turnstileToken: z.string().optional(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -34,7 +36,12 @@ export async function registerUserAction(raw: unknown): Promise<RegisterResult> 
     };
   }
 
-  const { name, email, password } = parsed.data;
+  const { name, email, password, turnstileToken } = parsed.data;
+
+  const captcha = await verifyTurnstileOrThrow(turnstileToken);
+  if (!captcha.ok) {
+    return { ok: false, error: captcha.message };
+  }
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {

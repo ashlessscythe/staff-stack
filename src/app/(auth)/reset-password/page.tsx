@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { AuthHeader } from "@/components/auth/auth-header";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
+import { turnstileSiteKeyForClient } from "@/server/turnstile-verify";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default function ResetPasswordPage() {
         <Suspense
           fallback={<div className="text-sm text-[color:var(--ss-muted-foreground)]">Loading…</div>}
         >
-          <ResetPasswordForm />
+          <ResetPasswordForm turnstileSiteKey={turnstileSiteKeyForClient()} />
         </Suspense>
       </div>
     </div>

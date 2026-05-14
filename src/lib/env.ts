@@ -18,8 +18,11 @@ export const env = createEnv({
     MICROSOFT_CLIENT_ID: z.string().optional(),
     MICROSOFT_CLIENT_SECRET: z.string().optional(),
     INTERNAL_CRON_SECRET: z.string().optional(),
+    TURNSTILE_SECRET_KEY: z.string().optional(),
   },
-  client: {},
+  client: {
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().optional(),
+  },
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
@@ -36,7 +39,24 @@ export const env = createEnv({
     MICROSOFT_CLIENT_ID: process.env.MICROSOFT_CLIENT_ID,
     MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET,
     INTERNAL_CRON_SECRET: process.env.INTERNAL_CRON_SECRET,
+    TURNSTILE_SECRET_KEY: process.env.TURNSTILE_SECRET_KEY,
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
   },
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   emptyStringAsUndefined: true,
 });
+
+if (!process.env.SKIP_ENV_VALIDATION) {
+  const hasSecret = Boolean(env.TURNSTILE_SECRET_KEY);
+  const hasSite = Boolean(env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
+  if (hasSecret && !hasSite) {
+    console.warn(
+      "[env] TURNSTILE_SECRET_KEY is set but NEXT_PUBLIC_TURNSTILE_SITE_KEY is missing; Turnstile stays off until both are set.",
+    );
+  }
+  if (hasSite && !hasSecret) {
+    console.warn(
+      "[env] NEXT_PUBLIC_TURNSTILE_SITE_KEY is set but TURNSTILE_SECRET_KEY is missing; Turnstile stays off until both are set.",
+    );
+  }
+}

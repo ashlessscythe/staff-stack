@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { AuthHeader } from "@/components/auth/auth-header";
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
 import { auth } from "@/auth";
+import { turnstileSiteKeyForClient } from "@/server/turnstile-verify";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function ForgotPasswordPage() {
         <Suspense
           fallback={<div className="text-sm text-[color:var(--ss-muted-foreground)]">Loading…</div>}
         >
-          <ForgotPasswordForm />
+          <ForgotPasswordForm turnstileSiteKey={turnstileSiteKeyForClient()} />
         </Suspense>
       </div>
     </div>

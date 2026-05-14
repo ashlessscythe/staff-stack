@@ -8,14 +8,17 @@ import { absoluteUrl } from "@/lib/app-origin";
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/server/audit";
 import { sendPasswordResetEmail } from "@/server/email/transactional";
+import { verifyTurnstileOrThrow } from "@/server/turnstile-verify";
 
 const requestSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
+  turnstileToken: z.string().optional(),
 });
 
 const completeSchema = z.object({
   token: z.string().min(64).max(64),
   password: z.string().min(8, "Password must be at least 8 characters.").max(200),
+  turnstileToken: z.string().optional(),
 });
 
 function hashResetToken(raw: string): string {
@@ -39,7 +42,12 @@ export async function requestPasswordResetAction(
     const issue = parsed.error.issues[0];
     return { ok: false, error: issue?.message ?? "Invalid email.", field: "email" };
   }
-  const email = parsed.data.email;
+  const { email, turnstileToken } = parsed.data;
+
+  const captcha = await verifyTurnstileOrThrow(turnstileToken);
+  if (!captcha.ok) {
+    return { ok: false, error: captcha.message, field: "email" };
+  }
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user?.passwordHash) {
@@ -94,7 +102,13 @@ export async function completePasswordResetAction(
     };
   }
 
-  const { token, password } = parsed.data;
+  const { token, password, turnstileToken } = parsed.data;
+
+  const captcha = await verifyTurnstileOrThrow(turnstileToken);
+  if (!captcha.ok) {
+    return { ok: false, error: captcha.message };
+  }
+
   const tokenHash = hashResetToken(token);
 
   const row = await prisma.passwordResetToken.findUnique({

@@ -2,10 +2,11 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { TurnstileField } from "@/components/auth/turnstile-field";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,15 +19,32 @@ const schema = z.object({
 
 type Form = z.infer<typeof schema>;
 
-export function ForgotPasswordForm() {
+type ForgotPasswordFormProps = {
+  turnstileSiteKey?: string;
+};
+
+export function ForgotPasswordForm({ turnstileSiteKey }: ForgotPasswordFormProps) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const resetTurnstileRef = useRef<(() => void) | null>(null);
+  const registerTurnstileReset = useCallback((fn: () => void) => {
+    resetTurnstileRef.current = fn;
+  }, []);
   const form = useForm<Form>({ resolver: zodResolver(schema) });
 
   const onSubmit = form.handleSubmit(async (data) => {
     setError(null);
-    const res = await requestPasswordResetAction(data);
+    if (turnstileSiteKey && !turnstileToken?.trim()) {
+      setError("Please complete the security check.");
+      return;
+    }
+    const res = await requestPasswordResetAction({
+      email: data.email,
+      turnstileToken: turnstileToken ?? undefined,
+    });
     if (!res.ok) {
+      resetTurnstileRef.current?.();
       setError(res.error);
       return;
     }
@@ -70,6 +88,13 @@ export function ForgotPasswordForm() {
               <p className="text-sm text-red-600">{form.formState.errors.email.message}</p>
             )}
           </div>
+          {turnstileSiteKey ? (
+            <TurnstileField
+              siteKey={turnstileSiteKey}
+              onTokenChange={setTurnstileToken}
+              registerReset={registerTurnstileReset}
+            />
+          ) : null}
           {error && <p className="text-sm text-red-600">{error}</p>}
           <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting ? "Sending…" : "Send reset link"}
