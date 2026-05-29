@@ -76,19 +76,10 @@ function groupShiftsByWeek(
 function WeekShiftRows(
   props: Omit<ScheduleShiftsTableProps, "shifts" | "weekStartsOn"> & {
     rows: ScheduleTableShift[];
-    weekLabel: string;
   },
 ) {
-  const {
-    rows,
-    weekLabel,
-    tenantSlug,
-    currentUserId,
-    canWrite,
-    canAssign,
-    userEmailById,
-    tenantUsers,
-  } = props;
+  const { rows, tenantSlug, currentUserId, canWrite, canAssign, userEmailById, tenantUsers } =
+    props;
 
   const columns = useMemo(
     () => [
@@ -150,14 +141,6 @@ function WeekShiftRows(
 
   return (
     <tbody className="[&>tr:nth-child(odd)]:bg-zinc-50/80 dark:[&>tr:nth-child(odd)]:bg-zinc-900/40">
-      <tr className="border-y border-zinc-200 bg-zinc-100/90 dark:border-zinc-800 dark:bg-zinc-900/80">
-        <td
-          colSpan={5}
-          className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400"
-        >
-          Week of {weekLabel}
-        </td>
-      </tr>
       {table.getRowModel().rows.map((row) => (
         <Fragment key={row.id}>
           <tr className="border-b border-zinc-200 align-top dark:border-zinc-800">
@@ -250,17 +233,20 @@ function WeekShiftRows(
   );
 }
 
-export function ScheduleShiftsTable(props: ScheduleShiftsTableProps) {
-  const { shifts, weekStartsOn } = props;
-  const groups = useMemo(() => groupShiftsByWeek(shifts, weekStartsOn), [shifts, weekStartsOn]);
-
-  if (shifts.length === 0) {
-    return <p className="text-sm text-zinc-500">No shifts in this window.</p>;
-  }
+function WeekScheduleTable(
+  props: Omit<ScheduleShiftsTableProps, "shifts" | "weekStartsOn"> & {
+    weekLabel: string;
+    rows: ScheduleTableShift[];
+  },
+) {
+  const { weekLabel } = props;
 
   return (
     <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <table className="w-full min-w-[640px] border-collapse text-sm">
+      <p className="border-b border-zinc-200 bg-zinc-100/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-400">
+        Week of {weekLabel}
+      </p>
+      <table className="w-full min-w-0 border-collapse text-sm">
         <thead>
           <tr className="border-b border-zinc-200 bg-white text-left text-xs font-medium uppercase text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950">
             <th className="px-3 py-2">Shift</th>
@@ -270,10 +256,25 @@ export function ScheduleShiftsTable(props: ScheduleShiftsTableProps) {
             <th className="px-3 py-2" />
           </tr>
         </thead>
-        {groups.map((g) => (
-          <WeekShiftRows key={g.weekKey} {...props} rows={g.rows} weekLabel={g.label} />
-        ))}
+        <WeekShiftRows {...props} />
       </table>
+    </div>
+  );
+}
+
+export function ScheduleShiftsTable(props: ScheduleShiftsTableProps) {
+  const { shifts, weekStartsOn } = props;
+  const groups = useMemo(() => groupShiftsByWeek(shifts, weekStartsOn), [shifts, weekStartsOn]);
+
+  if (shifts.length === 0) {
+    return <p className="text-sm text-zinc-500">No shifts in this window.</p>;
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {groups.map((g) => (
+        <WeekScheduleTable key={g.weekKey} {...props} rows={g.rows} weekLabel={g.label} />
+      ))}
     </div>
   );
 }

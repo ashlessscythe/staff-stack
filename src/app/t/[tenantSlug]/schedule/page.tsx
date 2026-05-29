@@ -1,19 +1,12 @@
-import { formatInTimeZone } from "date-fns-tz";
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScheduleShiftsTable } from "@/components/schedule/schedule-shifts-table";
 import { prisma } from "@/lib/db";
 import { hasPermission, permissionsForRole } from "@/lib/rbac";
-import {
-  assignShiftFormAction,
-  acknowledgeShiftFormAction,
-  checkInFormAction,
-  createShiftAction,
-  markNoShowFormAction,
-  publishShiftFormAction,
-} from "@/server/actions/shifts";
+import { weekStartsOnFromSettings } from "@/lib/tenant-settings";
+import { createShiftAction } from "@/server/actions/shifts";
 import { requireTenantShell } from "@/server/tenant-context";
 
 export default async function SchedulePage({
@@ -58,6 +51,22 @@ export default async function SchedulePage({
   const defaultSiteId = sites[0]?.id ?? "";
 
   const userEmailById = Object.fromEntries(tenantUsers.map((tu) => [tu.userId, tu.user.email]));
+  const weekStartsOn = weekStartsOnFromSettings(shell.tenant.settings);
+
+  const tableShifts = shifts.map((shift) => ({
+    id: shift.id,
+    title: shift.title,
+    status: shift.status,
+    startsAt: shift.startsAt.toISOString(),
+    endsAt: shift.endsAt.toISOString(),
+    site: { name: shift.site.name, timezone: shift.site.timezone },
+    assignments: shift.assignments.map((a) => ({
+      id: a.id,
+      userId: a.userId,
+      acknowledgedAt: a.acknowledgedAt?.toISOString() ?? null,
+      checkInAt: a.checkInAt?.toISOString() ?? null,
+    })),
+  }));
 
   return (
     <div className="space-y-8">
@@ -122,114 +131,16 @@ export default async function SchedulePage({
         </Card>
       )}
 
-      <div className="space-y-4">
-        {shifts.map((shift) => {
-          const tz = shift.site.timezone;
-          return (
-            <Card key={shift.id}>
-              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
-                <div>
-                  <CardTitle>{shift.title}</CardTitle>
-                  <CardDescription>
-                    {shift.site.name} · {shift.status} ·{" "}
-                    {formatInTimeZone(shift.startsAt, tz, "MMM d, yyyy HH:mm")} →{" "}
-                    {formatInTimeZone(shift.endsAt, tz, "HH:mm zzz")}
-                  </CardDescription>
-                </div>
-                {canWrite && shift.status === "DRAFT" && (
-                  <form action={publishShiftFormAction}>
-                    <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                    <input type="hidden" name="shiftId" value={shift.id} />
-                    <Button type="submit" size="sm" variant="secondary">
-                      Publish
-                    </Button>
-                  </form>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs font-medium uppercase text-zinc-500">Assignments</p>
-                <ul className="space-y-2 text-sm">
-                  {shift.assignments.map((a) => (
-                    <li
-                      key={a.id}
-                      className="flex flex-wrap items-center gap-2 border-b border-zinc-100 pb-2 dark:border-zinc-900"
-                    >
-                      <span className="font-mono text-xs">
-                        {userEmailById[a.userId] ?? a.userId}
-                      </span>
-                      {a.userId === shell.tenantUser.userId && !a.acknowledgedAt && (
-                        <form action={acknowledgeShiftFormAction}>
-                          <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                          <input type="hidden" name="shiftId" value={shift.id} />
-                          <Button type="submit" size="sm" variant="outline">
-                            Acknowledge
-                          </Button>
-                        </form>
-                      )}
-                      {a.userId === shell.tenantUser.userId && a.acknowledgedAt && (
-                        <span className="text-emerald-600">Acknowledged</span>
-                      )}
-                      {a.userId !== shell.tenantUser.userId && a.acknowledgedAt && (
-                        <span className="text-emerald-600">Acknowledged</span>
-                      )}
-                      {a.userId !== shell.tenantUser.userId && !a.acknowledgedAt && (
-                        <span className="text-zinc-400">Pending ack</span>
-                      )}
-                      {a.userId === shell.tenantUser.userId && !a.checkInAt && (
-                        <form action={checkInFormAction}>
-                          <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                          <input type="hidden" name="shiftId" value={shift.id} />
-                          <Button type="submit" size="sm" variant="ghost">
-                            Check in
-                          </Button>
-                        </form>
-                      )}
-                      {a.checkInAt && <span className="text-xs text-zinc-500">Checked in</span>}
-                      {canAssign && a.userId !== shell.tenantUser.userId && (
-                        <form action={markNoShowFormAction} className="inline">
-                          <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                          <input type="hidden" name="shiftId" value={shift.id} />
-                          <input type="hidden" name="userId" value={a.userId} />
-                          <Button type="submit" size="sm" variant="destructive">
-                            Mark no-show
-                          </Button>
-                        </form>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                {canAssign && (
-                  <form
-                    action={assignShiftFormAction}
-                    className="flex flex-wrap items-end gap-2 pt-2"
-                  >
-                    <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                    <input type="hidden" name="shiftId" value={shift.id} />
-                    <div className="space-y-1">
-                      <Label htmlFor={`user-${shift.id}`}>Assign user</Label>
-                      <select
-                        id={`user-${shift.id}`}
-                        name="userId"
-                        className="h-10 min-w-[200px] rounded-md border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-                      >
-                        {tenantUsers.map((tu) => (
-                          <option key={tu.userId} value={tu.userId}>
-                            {tu.user.email}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <Button type="submit" size="sm">
-                      Assign
-                    </Button>
-                  </form>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-        {shifts.length === 0 && <p className="text-sm text-zinc-500">No shifts in this window.</p>}
-      </div>
+      <ScheduleShiftsTable
+        tenantSlug={tenantSlug}
+        currentUserId={shell.tenantUser.userId}
+        weekStartsOn={weekStartsOn}
+        shifts={tableShifts}
+        canWrite={canWrite}
+        canAssign={canAssign}
+        userEmailById={userEmailById}
+        tenantUsers={tenantUsers.map((tu) => ({ userId: tu.userId, email: tu.user.email }))}
+      />
     </div>
   );
 }
