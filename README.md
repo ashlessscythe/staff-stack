@@ -37,15 +37,15 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Scripts
 
-| Script             | Description        |
-| ------------------ | ------------------ |
-| `npm run dev`      | Development server |
-| `npm run build`    | Production build   |
-| `npm run lint`     | ESLint             |
-| `npm run format`   | Prettier           |
-| `npm run test`     | Vitest unit tests  |
-| `npm run test:e2e` | Playwright         |
-| `npm run db:seed`  | Prisma seed        |
+| Script             | Description                                            |
+| ------------------ | ------------------------------------------------------ |
+| `npm run dev`      | Development server                                     |
+| `npm run build`    | Production build                                       |
+| `npm run lint`     | ESLint                                                 |
+| `npm run format`   | Prettier                                               |
+| `npm run test`     | Vitest unit tests                                      |
+| `npm run test:e2e` | Playwright                                             |
+| `npm run db:seed`  | Prisma seed (`-- --clear`, `--use-faker`, `--count N`) |
 
 ## License
 

@@ -46,7 +46,17 @@ Do not use `main` for this repository’s workflow.
 
 ## Demo users (development seed only)
 
-After `npm run db:seed`, use accounts documented in the seed output (emails under `@demo.local`). Passwords are for **local development only** — never ship these to production.
+After `npm run db:seed`, sign in with `@acme.demo` accounts (e.g. `admin@acme.demo`, `employee01@acme.demo`). Password: `Admin123!` (see seed output). **Local development only** — never use in production.
+
+Seed flags (pass after `--`):
+
+```bash
+npm run db:seed                          # default (12 employees, upsert)
+npm run db:seed -- --clear               # wipe app data, then seed
+npm run db:seed -- --clear --use-faker   # randomized display names
+npm run db:seed -- --clear --count 50    # 50 employees on Acme tenant
+npm run db:seed -- --help
+```
 
 ## Useful commands
 
