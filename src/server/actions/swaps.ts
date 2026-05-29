@@ -7,6 +7,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { hasPermission, permissionsForRole } from "@/lib/rbac";
 import { writeAuditLog } from "@/server/audit";
+import { assertUserCanTakeShift } from "@/server/scheduling/assert-user-can-take-shift";
+import { tenantUserIdForUser } from "@/server/scheduling/constraint-context";
 import { requireTenantShell } from "@/server/tenant-context";
 
 const ACTIVE_SWAP_STATUSES = ["REQUESTED", "PENDING_APPROVAL"] as const;
@@ -82,7 +84,7 @@ export async function requestSwapFormAction(formData: FormData) {
       tenantId: shell.tenant.id,
       userId: session.user.id,
     },
-    include: { shift: true },
+    include: { shift: { include: { site: { select: { timezone: true } } } } },
   });
   if (!requesterAssignment) throw new Error("Assignment not found");
 
@@ -91,7 +93,7 @@ export async function requestSwapFormAction(formData: FormData) {
       id: parsed.data.targetAssignmentId,
       tenantId: shell.tenant.id,
     },
-    include: { shift: true },
+    include: { shift: { include: { site: { select: { timezone: true } } } } },
   });
   if (!targetAssignment) throw new Error("Target assignment not found");
   if (targetAssignment.userId === session.user.id) throw new Error("Cannot swap with yourself");
@@ -108,6 +110,26 @@ export async function requestSwapFormAction(formData: FormData) {
     requesterAssignment.id,
     targetAssignment.id,
   ]);
+
+  const requesterTenantUserId = await tenantUserIdForUser(
+    shell.tenant.id,
+    requesterAssignment.userId,
+  );
+  if (!requesterTenantUserId) throw new Error("User not in tenant");
+
+  const acknowledgeConstraints = formData.get("acknowledgeConstraints") === "1";
+  const toShift = targetAssignment.shift;
+  await assertUserCanTakeShift({
+    tenantUserId: requesterTenantUserId,
+    shift: {
+      startsAt: toShift.startsAt,
+      endsAt: toShift.endsAt,
+      site: toShift.site,
+    },
+    tenantSettings: shell.tenant.settings,
+    acknowledgeWarnings: acknowledgeConstraints,
+    redirectTo: `/t/${parsed.data.tenantSlug}/schedule?swapError=constraints`,
+  });
 
   const swap = await prisma.shiftSwap.create({
     data: {
@@ -143,6 +165,7 @@ export async function acceptSwapFormAction(formData: FormData) {
   if (!parsed.success) throw new Error("Invalid form");
 
   const shell = await requireTenantShell(parsed.data.tenantSlug);
+  const acknowledgeConstraints = formData.get("acknowledgeConstraints") === "1";
 
   const swap = await prisma.shiftSwap.findFirst({
     where: {
@@ -150,10 +173,48 @@ export async function acceptSwapFormAction(formData: FormData) {
       tenantId: shell.tenant.id,
       status: "REQUESTED",
     },
-    include: { targetAssignment: true },
+    include: {
+      targetAssignment: true,
+      requesterAssignment: true,
+      fromShift: { include: { site: { select: { timezone: true } } } },
+      toShift: { include: { site: { select: { timezone: true } } } },
+    },
   });
   if (!swap?.targetAssignment) throw new Error("Swap not found");
   if (swap.targetAssignment.userId !== session.user.id) throw new Error("Forbidden");
+
+  const targetTenantUserId = await tenantUserIdForUser(
+    shell.tenant.id,
+    swap.targetAssignment.userId,
+  );
+  const requesterTenantUserId = await tenantUserIdForUser(
+    shell.tenant.id,
+    swap.requesterAssignment.userId,
+  );
+  if (!targetTenantUserId || !requesterTenantUserId) throw new Error("User not in tenant");
+
+  await assertUserCanTakeShift({
+    tenantUserId: targetTenantUserId,
+    shift: {
+      startsAt: swap.fromShift.startsAt,
+      endsAt: swap.fromShift.endsAt,
+      site: swap.fromShift.site,
+    },
+    tenantSettings: shell.tenant.settings,
+    acknowledgeWarnings: acknowledgeConstraints,
+    redirectTo: `/t/${parsed.data.tenantSlug}/swaps?swapError=constraints&swapId=${swap.id}`,
+  });
+
+  await assertUserCanTakeShift({
+    tenantUserId: requesterTenantUserId,
+    shift: {
+      startsAt: swap.toShift.startsAt,
+      endsAt: swap.toShift.endsAt,
+      site: swap.toShift.site,
+    },
+    tenantSettings: shell.tenant.settings,
+    redirectTo: `/t/${parsed.data.tenantSlug}/swaps?swapError=constraints&swapId=${swap.id}`,
+  });
 
   await prisma.shiftSwap.update({
     where: { id: swap.id },
@@ -262,10 +323,41 @@ export async function approveSwapFormAction(formData: FormData) {
     include: {
       requesterAssignment: true,
       targetAssignment: true,
+      fromShift: { include: { site: { select: { timezone: true } } } },
+      toShift: { include: { site: { select: { timezone: true } } } },
     },
   });
   if (!swap?.targetAssignment) throw new Error("Invalid swap");
   const targetAssignment = swap.targetAssignment;
+
+  const requesterTenantUserId = await tenantUserIdForUser(
+    shell.tenant.id,
+    swap.requesterAssignment.userId,
+  );
+  const targetTenantUserId = await tenantUserIdForUser(shell.tenant.id, targetAssignment.userId);
+  if (!requesterTenantUserId || !targetTenantUserId) throw new Error("User not in tenant");
+
+  await assertUserCanTakeShift({
+    tenantUserId: requesterTenantUserId,
+    shift: {
+      startsAt: swap.toShift.startsAt,
+      endsAt: swap.toShift.endsAt,
+      site: swap.toShift.site,
+    },
+    tenantSettings: shell.tenant.settings,
+    redirectTo: `/t/${tenantSlug}/swaps?swapError=constraints&swapId=${swapId}`,
+  });
+
+  await assertUserCanTakeShift({
+    tenantUserId: targetTenantUserId,
+    shift: {
+      startsAt: swap.fromShift.startsAt,
+      endsAt: swap.fromShift.endsAt,
+      site: swap.fromShift.site,
+    },
+    tenantSettings: shell.tenant.settings,
+    redirectTo: `/t/${tenantSlug}/swaps?swapError=constraints&swapId=${swapId}`,
+  });
 
   await prisma.$transaction(async (tx) => {
     const reqUser = swap.requesterAssignment.userId;

@@ -11,15 +11,16 @@ import { formatInTimeZone } from "date-fns-tz";
 import Link from "next/link";
 import { Fragment, useMemo } from "react";
 
+import { AssignShiftControls } from "@/components/schedule/assign-shift-controls";
+import type { ConstraintHintSummary } from "@/components/schedule/constraint-hints";
+import { SwapRequestControls } from "@/components/schedule/swap-request-controls";
 import { Button } from "@/components/ui/button";
 import {
-  assignShiftFormAction,
   acknowledgeShiftFormAction,
   checkInFormAction,
   markNoShowFormAction,
   publishShiftFormAction,
 } from "@/server/actions/shifts";
-import { requestSwapFormAction } from "@/server/actions/swaps";
 
 export type AssignmentSwapInfo = {
   status: "REQUESTED" | "PENDING_APPROVAL";
@@ -53,19 +54,22 @@ export type ScheduleShiftsTableProps = {
   pendingSwapsByAssignmentId: Record<string, AssignmentSwapInfo>;
   userEmailById: Record<string, string>;
   tenantUsers: { userId: string; email: string }[];
+  constraintHints: Record<string, Record<string, ConstraintHintSummary>>;
+  swapTargetHints: Record<string, ConstraintHintSummary>;
 };
 
 const columnHelper = createColumnHelper<ScheduleTableShift>();
 
-function buildEligibleTargets(
+function buildSwapTargets(
   requesterShiftId: string,
   allShifts: ScheduleTableShift[],
   currentUserId: string,
   pendingSwapsByAssignmentId: Record<string, AssignmentSwapInfo>,
   userEmailById: Record<string, string>,
-): { id: string; label: string }[] {
+  swapTargetHints: Record<string, ConstraintHintSummary>,
+): { assignmentId: string; label: string; hint: ConstraintHintSummary }[] {
   const now = Date.now();
-  const targets: { id: string; label: string }[] = [];
+  const targets: { assignmentId: string; label: string; hint: ConstraintHintSummary }[] = [];
   for (const shift of allShifts) {
     if (shift.status !== "PUBLISHED") continue;
     if (new Date(shift.startsAt).getTime() <= now) continue;
@@ -78,8 +82,9 @@ function buildEligibleTargets(
         timeStyle: "short",
       });
       targets.push({
-        id: assignment.id,
+        assignmentId: assignment.id,
         label: `${shift.title} · ${when} · ${userEmailById[assignment.userId] ?? assignment.userId}`,
+        hint: swapTargetHints[assignment.id] ?? { blocking: [], warnings: [] },
       });
     }
   }
@@ -149,6 +154,8 @@ function WeekShiftRows(
     pendingSwapsByAssignmentId,
     userEmailById,
     tenantUsers,
+    constraintHints,
+    swapTargetHints,
   } = props;
 
   const columns = useMemo(
@@ -230,14 +237,15 @@ function WeekShiftRows(
                   const shiftIsSwappable =
                     row.original.status === "PUBLISHED" &&
                     new Date(row.original.startsAt).getTime() > Date.now();
-                  const eligibleTargets =
+                  const swapTargets =
                     isOwn && canRequestSwap && shiftIsSwappable && !swapInfo
-                      ? buildEligibleTargets(
+                      ? buildSwapTargets(
                           row.original.id,
                           allShifts,
                           currentUserId,
                           pendingSwapsByAssignmentId,
                           userEmailById,
+                          swapTargetHints,
                         )
                       : [];
 
@@ -284,82 +292,24 @@ function WeekShiftRows(
                           </form>
                         )}
                       </div>
-                      {eligibleTargets.length > 0 && (
-                        <form
-                          action={requestSwapFormAction}
-                          className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-zinc-200 p-2 dark:border-zinc-800"
-                        >
-                          <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                          <input type="hidden" name="requesterAssignmentId" value={a.id} />
-                          <div className="space-y-1">
-                            <label
-                              htmlFor={`swap-target-${a.id}`}
-                              className="text-xs text-zinc-500"
-                            >
-                              Request swap with
-                            </label>
-                            <select
-                              id={`swap-target-${a.id}`}
-                              name="targetAssignmentId"
-                              required
-                              className="h-9 min-w-[220px] rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
-                            >
-                              <option value="">Select shift…</option>
-                              {eligibleTargets.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="space-y-1">
-                            <label htmlFor={`swap-msg-${a.id}`} className="text-xs text-zinc-500">
-                              Message (optional)
-                            </label>
-                            <input
-                              id={`swap-msg-${a.id}`}
-                              name="message"
-                              type="text"
-                              placeholder="Reason for swap"
-                              className="h-9 min-w-[180px] rounded-md border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
-                            />
-                          </div>
-                          <Button type="submit" size="sm" variant="secondary">
-                            Request swap
-                          </Button>
-                        </form>
+                      {swapTargets.length > 0 && (
+                        <SwapRequestControls
+                          tenantSlug={tenantSlug}
+                          requesterAssignmentId={a.id}
+                          targets={swapTargets}
+                        />
                       )}
                     </li>
                   );
                 })}
               </ul>
-              {canAssign && (
-                <form
-                  action={assignShiftFormAction}
-                  className="flex flex-wrap items-end gap-2 pt-1"
-                >
-                  <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                  <input type="hidden" name="shiftId" value={row.original.id} />
-                  <div className="space-y-1">
-                    <label htmlFor={`user-${row.original.id}`} className="text-xs text-zinc-500">
-                      Assign user
-                    </label>
-                    <select
-                      id={`user-${row.original.id}`}
-                      name="userId"
-                      className="h-10 min-w-[200px] rounded-md border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-                    >
-                      {tenantUsers.map((tu) => (
-                        <option key={tu.userId} value={tu.userId}>
-                          {tu.email}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <Button type="submit" size="sm">
-                    Assign
-                  </Button>
-                </form>
+              {canAssign && tenantUsers.length > 0 && (
+                <AssignShiftControls
+                  tenantSlug={tenantSlug}
+                  shiftId={row.original.id}
+                  tenantUsers={tenantUsers}
+                  hintsForShift={constraintHints[row.original.id] ?? {}}
+                />
               )}
             </td>
           </tr>

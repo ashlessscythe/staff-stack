@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  renderAvailabilityUpdateRequestEmailHtml,
   renderRegistrationPendingEmailHtml,
   renderWorkspaceAccessApprovedEmailHtml,
 } from "./templates";
@@ -13,6 +14,19 @@ describe("email templates", () => {
     });
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
+  });
+
+  it("includes availability page link in notify template", () => {
+    const html = renderAvailabilityUpdateRequestEmailHtml({
+      tenantName: "Acme",
+      tenantSlug: "acme",
+      reasonCode: "NO_RULES",
+      shiftTitle: "Floor",
+      siteName: "NYC",
+      shiftStartsAtLabel: "Mon 10am",
+    });
+    expect(html).toContain("/t/acme/availability");
+    expect(html).toContain("weekly availability");
   });
 
   it("escapes tenant and role copy in workspace approved template", () => {

@@ -8,6 +8,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { hasPermission, permissionsForRole } from "@/lib/rbac";
 import { writeAuditLog } from "@/server/audit";
+import { assertUserCanTakeShift } from "@/server/scheduling/assert-user-can-take-shift";
+import { tenantUserIdForUser } from "@/server/scheduling/constraint-context";
 import { requireTenantShell } from "@/server/tenant-context";
 
 function canOnAnySite(
@@ -101,7 +103,12 @@ export async function publishShiftAction(tenantSlug: string, shiftId: string) {
   revalidatePath(`/t/${tenantSlug}/schedule`);
 }
 
-export async function assignShiftAction(tenantSlug: string, shiftId: string, userId: string) {
+export async function assignShiftAction(
+  tenantSlug: string,
+  shiftId: string,
+  userId: string,
+  opts?: { forceAssign?: boolean },
+) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
   const shell = await requireTenantShell(tenantSlug);
@@ -109,8 +116,24 @@ export async function assignShiftAction(tenantSlug: string, shiftId: string, use
 
   const shift = await prisma.shift.findFirst({
     where: { id: shiftId, tenantId: shell.tenant.id, deletedAt: null },
+    include: { site: { select: { timezone: true } } },
   });
   if (!shift) throw new Error("Not found");
+
+  const tenantUserId = await tenantUserIdForUser(shell.tenant.id, userId);
+  if (!tenantUserId) throw new Error("User not in tenant");
+
+  await assertUserCanTakeShift({
+    tenantUserId,
+    shift: {
+      startsAt: shift.startsAt,
+      endsAt: shift.endsAt,
+      site: shift.site,
+    },
+    tenantSettings: shell.tenant.settings,
+    forceAssign: opts?.forceAssign,
+    redirectTo: `/t/${tenantSlug}/schedule?assignError=constraints`,
+  });
 
   await prisma.shiftAssignment.upsert({
     where: { shiftId_userId: { shiftId, userId } },
@@ -233,5 +256,6 @@ export async function assignShiftFormAction(formData: FormData) {
   const tenantSlug = String(formData.get("tenantSlug") ?? "");
   const shiftId = String(formData.get("shiftId") ?? "");
   const userId = String(formData.get("userId") ?? "");
-  await assignShiftAction(tenantSlug, shiftId, userId);
+  const forceAssign = formData.get("forceAssign") === "1";
+  await assignShiftAction(tenantSlug, shiftId, userId, { forceAssign });
 }

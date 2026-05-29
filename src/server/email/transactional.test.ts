@@ -9,6 +9,7 @@ vi.mock("@/server/services/notify", () => ({
 }));
 
 import {
+  sendAvailabilityUpdateRequestEmail,
   sendPasswordResetEmail,
   sendRegistrationPendingEmail,
   sendWorkspaceAccessApprovedEmail,
@@ -33,6 +34,21 @@ describe("transactional emails", () => {
       }),
     );
     expect(mocks.sendEmail.mock.calls[0][0].html).toContain("Reset your password");
+  });
+
+  it("sendAvailabilityUpdateRequestEmail uses tenant in subject", async () => {
+    await sendAvailabilityUpdateRequestEmail({
+      to: "e@acme.demo",
+      tenantName: "Acme Corp",
+      tenantSlug: "acme",
+      reasonCode: "OUTSIDE_RULE",
+    });
+    expect(mocks.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "e@acme.demo",
+        subject: expect.stringContaining("Acme Corp"),
+      }),
+    );
   });
 
   it("sendRegistrationPendingEmail includes recipient email in body", async () => {

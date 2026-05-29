@@ -1,11 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AvailabilityExceptionForm } from "@/components/availability/availability-exception-form";
+import { AvailabilityExceptionsList } from "@/components/availability/availability-exceptions-list";
 import { AvailabilityRuleForm } from "@/components/availability/availability-rule-form";
-import { formatMinuteRange } from "@/lib/time-format";
+import { AvailabilityRulesList } from "@/components/availability/availability-rules-list";
 import { prisma } from "@/lib/db";
 import { hasPermission, permissionsForRole } from "@/lib/rbac";
 import { requireTenantShell } from "@/server/tenant-context";
-
-const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default async function AvailabilityPage({
   params,
@@ -25,11 +25,18 @@ export default async function AvailabilityPage({
     orderBy: { dayOfWeek: "asc" },
   });
 
-  const pto = await prisma.ptoRequest.findMany({
-    where: { tenantUserId: shell.tenantUser.id },
-    orderBy: { startsOn: "desc" },
-    take: 20,
-  });
+  const [exceptions, pto] = await Promise.all([
+    prisma.availabilityException.findMany({
+      where: { tenantUserId: shell.tenantUser.id },
+      orderBy: { date: "desc" },
+      take: 30,
+    }),
+    prisma.ptoRequest.findMany({
+      where: { tenantUserId: shell.tenantUser.id },
+      orderBy: { startsOn: "desc" },
+      take: 20,
+    }),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -55,20 +62,54 @@ export default async function AvailabilityPage({
         </Card>
       )}
 
+      {canEdit && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Add date exception</CardTitle>
+            <CardDescription>
+              Override a specific date (day off or extra availability).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AvailabilityExceptionForm tenantSlug={tenantSlug} />
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Your rules</CardTitle>
         </CardHeader>
         <CardContent>
-          <ul className="space-y-2 text-sm">
-            {rules.map((r) => (
-              <li key={r.id}>
-                {days[r.dayOfWeek]} ·{" "}
-                {formatMinuteRange(r.startMinute, r.endMinute, timeDisplayFormat)}
-              </li>
-            ))}
-            {rules.length === 0 && <p className="text-zinc-500">No rules yet.</p>}
-          </ul>
+          <AvailabilityRulesList
+            tenantSlug={tenantSlug}
+            timeDisplayFormat={timeDisplayFormat}
+            canEdit={canEdit}
+            rules={rules.map((r) => ({
+              id: r.id,
+              dayOfWeek: r.dayOfWeek,
+              startMinute: r.startMinute,
+              endMinute: r.endMinute,
+            }))}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Date exceptions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AvailabilityExceptionsList
+            tenantSlug={tenantSlug}
+            canEdit={canEdit}
+            exceptions={exceptions.map((e) => ({
+              id: e.id,
+              date: e.date.toISOString().slice(0, 10),
+              available: e.available,
+              note: e.note,
+            }))}
+          />
         </CardContent>
       </Card>
 

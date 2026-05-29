@@ -6,6 +6,14 @@ const hoisted = vi.hoisted(() => ({
   prisma: {
     availabilityRule: {
       create: vi.fn(() => Promise.resolve({ id: "rule-1" })),
+      findFirst: vi.fn(),
+      update: vi.fn(),
+      deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
+    },
+    availabilityException: {
+      findFirst: vi.fn(),
+      update: vi.fn(),
+      deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
     },
   },
 }));
@@ -17,7 +25,11 @@ vi.mock("@/server/tenant-context", () => ({
 vi.mock("@/lib/db", () => ({ prisma: hoisted.prisma }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-import { addAvailabilityRuleAction } from "./availability";
+import {
+  addAvailabilityRuleAction,
+  deleteAvailabilityRuleAction,
+  updateAvailabilityRuleAction,
+} from "./availability";
 
 describe("addAvailabilityRuleAction", () => {
   beforeEach(() => {
@@ -103,5 +115,75 @@ describe("addAvailabilityRuleAction", () => {
     await expect(addAvailabilityRuleAction(formData)).rejects.toThrow(
       "End time must be after start time",
     );
+  });
+});
+
+describe("updateAvailabilityRuleAction", () => {
+  const ruleId = "00000000-0000-4000-8000-000000000099";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    hoisted.auth.mockResolvedValue({ user: { id: "user-1" } });
+    hoisted.requireTenantShell.mockResolvedValue({
+      tenant: { id: "tenant-1", timeDisplayFormat: "TWELVE_HOUR" },
+      tenantUser: { id: "tu-1" },
+      memberships: [{ role: "EMPLOYEE", permissions: [] }],
+    });
+    hoisted.prisma.availabilityRule.findFirst.mockResolvedValue({
+      id: ruleId,
+      tenantUserId: "tu-1",
+    });
+  });
+
+  it("updates owned rule", async () => {
+    const formData = new FormData();
+    formData.set("tenantSlug", "acme");
+    formData.set("ruleId", ruleId);
+    formData.set("dayOfWeek", "2");
+    formData.set("startTime", "10am");
+    formData.set("endTime", "6pm");
+
+    await updateAvailabilityRuleAction(formData);
+
+    expect(hoisted.prisma.availabilityRule.update).toHaveBeenCalledWith({
+      where: { id: ruleId },
+      data: { dayOfWeek: 2, startMinute: 10 * 60, endMinute: 18 * 60 },
+    });
+  });
+
+  it("rejects update when rule not owned", async () => {
+    hoisted.prisma.availabilityRule.findFirst.mockResolvedValue(null);
+    const formData = new FormData();
+    formData.set("tenantSlug", "acme");
+    formData.set("ruleId", ruleId);
+    formData.set("dayOfWeek", "1");
+    formData.set("startTime", "9am");
+    formData.set("endTime", "5pm");
+
+    await expect(updateAvailabilityRuleAction(formData)).rejects.toThrow("Not found");
+  });
+});
+
+describe("deleteAvailabilityRuleAction", () => {
+  it("deletes owned rule", async () => {
+    hoisted.auth.mockResolvedValue({ user: { id: "user-1" } });
+    hoisted.requireTenantShell.mockResolvedValue({
+      tenant: { id: "tenant-1", timeDisplayFormat: "TWELVE_HOUR" },
+      tenantUser: { id: "tu-1" },
+      memberships: [{ role: "EMPLOYEE", permissions: [] }],
+    });
+
+    const formData = new FormData();
+    formData.set("tenantSlug", "acme");
+    formData.set("ruleId", "00000000-0000-4000-8000-000000000099");
+
+    await deleteAvailabilityRuleAction(formData);
+
+    expect(hoisted.prisma.availabilityRule.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: "00000000-0000-4000-8000-000000000099",
+        tenantUserId: "tu-1",
+      },
+    });
   });
 });

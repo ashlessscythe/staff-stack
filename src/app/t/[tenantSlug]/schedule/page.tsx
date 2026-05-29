@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { ConstraintHintSummary } from "@/components/schedule/constraint-hints";
 import {
   ScheduleShiftsTable,
   type AssignmentSwapInfo,
@@ -10,14 +11,19 @@ import { prisma } from "@/lib/db";
 import { hasPermission, permissionsForRole } from "@/lib/rbac";
 import { weekStartsOnFromSettings } from "@/lib/tenant-settings";
 import { createShiftAction } from "@/server/actions/shifts";
+import { buildConstraintHintsForSchedule, hintForShift } from "@/server/scheduling/build-hints";
+import { loadConstraintContextBatch } from "@/server/scheduling/constraint-context";
 import { requireTenantShell } from "@/server/tenant-context";
 
 export default async function SchedulePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ tenantSlug: string }>;
+  searchParams: Promise<{ assignError?: string; codes?: string; swapError?: string }>;
 }) {
   const { tenantSlug } = await params;
+  const sp = await searchParams;
   const shell = await requireTenantShell(tenantSlug);
 
   const canWrite = shell.memberships.some((m) =>
@@ -91,6 +97,50 @@ export default async function SchedulePage({
     }
   }
 
+  const tenantUserIds = tenantUsers.map((tu) => tu.id);
+  const userIdByTenantUserId = new Map(tenantUsers.map((tu) => [tu.id, tu.userId] as const));
+  const contextBatch = await loadConstraintContextBatch(tenantUserIds, { from, to });
+
+  const shiftLikes = shifts.map((s) => ({
+    id: s.id,
+    startsAt: s.startsAt,
+    endsAt: s.endsAt,
+    site: { timezone: s.site.timezone },
+  }));
+
+  const constraintHints = buildConstraintHintsForSchedule(
+    shiftLikes,
+    tenantUserIds,
+    userIdByTenantUserId,
+    contextBatch,
+    shell.tenant.settings,
+  );
+
+  const requesterContext = contextBatch.get(shell.tenantUser.id) ?? {
+    rules: [],
+    exceptions: [],
+    ptoRequests: [],
+  };
+  const swapTargetHints: Record<string, ConstraintHintSummary> = {};
+  const now = Date.now();
+  for (const shift of shifts) {
+    if (shift.status !== "PUBLISHED" || shift.startsAt.getTime() <= now) continue;
+    const hint = hintForShift(
+      {
+        startsAt: shift.startsAt,
+        endsAt: shift.endsAt,
+        site: { timezone: shift.site.timezone },
+      },
+      requesterContext,
+      shell.tenant.settings,
+    );
+    for (const assignment of shift.assignments) {
+      if (assignment.userId !== currentUserId) {
+        swapTargetHints[assignment.id] = hint;
+      }
+    }
+  }
+
   const tableShifts = shifts.map((shift) => ({
     id: shift.id,
     title: shift.title,
@@ -112,6 +162,19 @@ export default async function SchedulePage({
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Schedule</h1>
         <p className="text-sm text-zinc-500">Next 30 days · timezone shown per site</p>
       </div>
+
+      {sp.assignError === "constraints" && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          Assignment blocked by scheduling constraints
+          {sp.codes ? ` (${sp.codes.replace(/,/g, ", ")})` : ""}.
+        </p>
+      )}
+      {sp.swapError === "constraints" && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          Swap request blocked by scheduling constraints
+          {sp.codes ? ` (${sp.codes.replace(/,/g, ", ")})` : ""}.
+        </p>
+      )}
 
       {canWrite && defaultSiteId && (
         <Card>
@@ -181,6 +244,8 @@ export default async function SchedulePage({
         pendingSwapsByAssignmentId={pendingSwapsByAssignmentId}
         userEmailById={userEmailById}
         tenantUsers={tenantUsers.map((tu) => ({ userId: tu.userId, email: tu.user.email }))}
+        constraintHints={constraintHints}
+        swapTargetHints={swapTargetHints}
       />
     </div>
   );

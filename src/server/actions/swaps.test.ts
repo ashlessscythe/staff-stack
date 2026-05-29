@@ -24,17 +24,33 @@ vi.mock("@/server/tenant-context", () => ({
 vi.mock("@/lib/db", () => ({ prisma: hoisted.prisma }));
 vi.mock("@/server/audit", () => ({ writeAuditLog: hoisted.writeAuditLog }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  redirect: () => {
+    throw new Error("REDIRECT");
+  },
+}));
+vi.mock("@/server/scheduling/assert-user-can-take-shift", () => ({
+  assertUserCanTakeShift: vi.fn().mockResolvedValue({ violations: [], blocking: [], warnings: [] }),
+  SchedulingConstraintError: class SchedulingConstraintError extends Error {},
+}));
+vi.mock("@/server/scheduling/constraint-context", () => ({
+  tenantUserIdForUser: vi.fn().mockResolvedValue("tu-1"),
+}));
 
 import { acceptSwapFormAction, approveSwapFormAction, requestSwapFormAction } from "./swaps";
 
+const site = { timezone: "America/New_York" };
+const future = new Date(Date.now() + 86400000);
+const futureEnd = new Date(Date.now() + 90000000);
+
 const shell = {
-  tenant: { id: "tenant-1" },
+  tenant: { id: "tenant-1", settings: {} },
   tenantUser: { id: "tu-1", userId: "user-1" },
   memberships: [{ role: "EMPLOYEE", permissions: [] }],
 };
 
 const managerShell = {
-  tenant: { id: "tenant-1" },
+  tenant: { id: "tenant-1", settings: {} },
   tenantUser: { id: "tu-mgr", userId: "mgr-1" },
   memberships: [{ role: "MANAGER", permissions: [] }],
 };
@@ -56,13 +72,25 @@ describe("requestSwapFormAction", () => {
         id: REQ_ASSIGN,
         userId: "user-1",
         shiftId: SHIFT_A,
-        shift: { id: SHIFT_A, status: "PUBLISHED", startsAt: new Date(Date.now() + 86400000) },
+        shift: {
+          id: SHIFT_A,
+          status: "PUBLISHED",
+          startsAt: future,
+          endsAt: futureEnd,
+          site,
+        },
       })
       .mockResolvedValueOnce({
         id: TGT_ASSIGN,
         userId: "user-2",
         shiftId: SHIFT_B,
-        shift: { id: SHIFT_B, status: "PUBLISHED", startsAt: new Date(Date.now() + 172800000) },
+        shift: {
+          id: SHIFT_B,
+          status: "PUBLISHED",
+          startsAt: future,
+          endsAt: futureEnd,
+          site,
+        },
       });
     hoisted.prisma.shiftSwap.create.mockResolvedValue({ id: SWAP_ID });
   });
@@ -141,6 +169,9 @@ describe("acceptSwapFormAction", () => {
     hoisted.prisma.shiftSwap.findFirst.mockResolvedValue({
       id: SWAP_ID,
       targetAssignment: { userId: "user-2" },
+      requesterAssignment: { userId: "user-1" },
+      fromShift: { startsAt: future, endsAt: futureEnd, site },
+      toShift: { startsAt: future, endsAt: futureEnd, site },
     });
 
     const formData = new FormData();
@@ -188,6 +219,8 @@ describe("approveSwapFormAction", () => {
       targetAssignmentId: TGT_ASSIGN,
       requesterAssignment: { userId: "user-1" },
       targetAssignment: { userId: "user-2" },
+      fromShift: { startsAt: future, endsAt: futureEnd, site },
+      toShift: { startsAt: future, endsAt: futureEnd, site },
     });
 
     const txUpdates: { where: { id: string }; data: { userId: string } }[] = [];

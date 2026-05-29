@@ -1,6 +1,10 @@
 import { PrismaClient, RoleKey, ShiftStatus, SwapStatus } from "@prisma/client";
 import { faker } from "@faker-js/faker";
 import * as argon2 from "argon2";
+import { fromZonedTime } from "date-fns-tz";
+
+import { evaluateScheduleConstraints } from "../src/lib/scheduling-constraints";
+import { schedulingSettingsFromTenant } from "../src/lib/scheduling-settings";
 import { clearSeedData } from "./seed-clear";
 import { parseSeedArgs, type SeedOptions } from "./seed-cli";
 
@@ -107,12 +111,47 @@ function addDays(base: Date, days: number): Date {
   return d;
 }
 
-function shiftWindow(base: Date, dayOffset: number, startHour: number, durationHours: number) {
-  const starts = addDays(base, dayOffset);
-  starts.setUTCHours(startHour, 0, 0, 0);
-  const ends = new Date(starts);
-  ends.setUTCHours(startHour + durationHours, 0, 0, 0);
-  return { starts, ends };
+const SITE_TIMEZONES: Record<keyof typeof SITE_IDS, string> = {
+  nyc: "America/New_York",
+  chi: "America/Chicago",
+  la: "America/Los_Angeles",
+};
+
+function shiftWindowInSite(
+  base: Date,
+  dayOffset: number,
+  startHourLocal: number,
+  durationHours: number,
+  timeZone: string,
+) {
+  const day = addDays(base, dayOffset);
+  const y = day.getUTCFullYear();
+  const m = String(day.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(day.getUTCDate()).padStart(2, "0");
+  const h = (n: number) => String(n).padStart(2, "0");
+  const startLocal = `${y}-${m}-${d}T${h(startHourLocal)}:00:00`;
+  const endLocal = `${y}-${m}-${d}T${h(startHourLocal + durationHours)}:00:00`;
+  return {
+    starts: fromZonedTime(startLocal, timeZone),
+    ends: fromZonedTime(endLocal, timeZone),
+  };
+}
+
+function seedCanAssign(
+  shift: { startsAt: Date; endsAt: Date; siteTimezone: string },
+  ctx: EmployeeConstraintCtx,
+  settings: ReturnType<typeof schedulingSettingsFromTenant>,
+): boolean {
+  const violations = evaluateScheduleConstraints({
+    shiftStartsAt: shift.startsAt,
+    shiftEndsAt: shift.endsAt,
+    siteTimezone: shift.siteTimezone,
+    rules: ctx.rules,
+    exceptions: ctx.exceptions,
+    ptoRequests: ctx.ptoRequests,
+    settings,
+  });
+  return !violations.some((v) => v.severity === "error");
 }
 
 /** Spread employees across shifts without exceeding roster size. */
@@ -133,10 +172,20 @@ type ShiftSpecTemplate = {
   siteKey: keyof typeof SITE_IDS;
   title: string;
   dayOffset: number;
-  startHour: number;
+  startHourLocal: number;
   durationHours: number;
   status: ShiftStatus;
   recurrenceRule?: string;
+};
+
+type EmployeeConstraintCtx = {
+  rules: { dayOfWeek: number; startMinute: number; endMinute: number }[];
+  exceptions: { date: Date; available: boolean }[];
+  ptoRequests: {
+    startsOn: Date;
+    endsOn: Date;
+    status: "REQUESTED" | "APPROVED" | "DENIED" | "CANCELLED";
+  }[];
 };
 
 function buildShiftTemplates(useFaker: boolean): ShiftSpecTemplate[] {
@@ -154,7 +203,7 @@ function buildShiftTemplates(useFaker: boolean): ShiftSpecTemplate[] {
       siteKey: "nyc",
       title: shiftTitle(useFaker, titles[0]),
       dayOffset: 1,
-      startHour: 14,
+      startHourLocal: 10,
       durationHours: 8,
       status: ShiftStatus.PUBLISHED,
       recurrenceRule: "FREQ=WEEKLY;BYDAY=MO,WE,FR",
@@ -164,7 +213,7 @@ function buildShiftTemplates(useFaker: boolean): ShiftSpecTemplate[] {
       siteKey: "nyc",
       title: shiftTitle(useFaker, titles[1]),
       dayOffset: 2,
-      startHour: 12,
+      startHourLocal: 10,
       durationHours: 8,
       status: ShiftStatus.PUBLISHED,
     },
@@ -173,7 +222,7 @@ function buildShiftTemplates(useFaker: boolean): ShiftSpecTemplate[] {
       siteKey: "chi",
       title: shiftTitle(useFaker, titles[2]),
       dayOffset: 1,
-      startHour: 15,
+      startHourLocal: 10,
       durationHours: 8,
       status: ShiftStatus.PUBLISHED,
     },
@@ -182,7 +231,7 @@ function buildShiftTemplates(useFaker: boolean): ShiftSpecTemplate[] {
       siteKey: "chi",
       title: shiftTitle(useFaker, titles[3]),
       dayOffset: 3,
-      startHour: 16,
+      startHourLocal: 12,
       durationHours: 6,
       status: ShiftStatus.PUBLISHED,
     },
@@ -191,7 +240,7 @@ function buildShiftTemplates(useFaker: boolean): ShiftSpecTemplate[] {
       siteKey: "la",
       title: shiftTitle(useFaker, titles[4]),
       dayOffset: 2,
-      startHour: 18,
+      startHourLocal: 11,
       durationHours: 8,
       status: ShiftStatus.PUBLISHED,
     },
@@ -200,7 +249,7 @@ function buildShiftTemplates(useFaker: boolean): ShiftSpecTemplate[] {
       siteKey: "nyc",
       title: shiftTitle(useFaker, titles[5]),
       dayOffset: 4,
-      startHour: 14,
+      startHourLocal: 10,
       durationHours: 8,
       status: ShiftStatus.DRAFT,
     },
@@ -361,11 +410,13 @@ async function seedAcmeTenant(options: SeedOptions) {
 
   const shifts = await Promise.all(
     shiftSpecs.map(async (spec) => {
-      const { starts, ends } = shiftWindow(
+      const tz = SITE_TIMEZONES[spec.siteKey];
+      const { starts, ends } = shiftWindowInSite(
         scheduleBase,
         spec.dayOffset,
-        spec.startHour,
+        spec.startHourLocal,
         spec.durationHours,
+        tz,
       );
       return prisma.shift.upsert({
         where: { id: spec.id },
@@ -393,28 +444,116 @@ async function seedAcmeTenant(options: SeedOptions) {
     }),
   );
 
-  const publishedShift = shifts[0];
-  const swapTargetShift = shifts[1];
+  const schedulingSettings = schedulingSettingsFromTenant(tenant.settings);
 
-  const assignments: { shiftId: string; userId: string }[] = [];
+  await prisma.availabilityRule.deleteMany({
+    where: { tenantUserId: { in: employeeTus.map((tu) => tu.id) } },
+  });
+  for (const tu of employeeTus) {
+    await prisma.availabilityRule.createMany({
+      data: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
+        tenantUserId: tu.id,
+        dayOfWeek,
+        startMinute: 6 * 60,
+        endMinute: 22 * 60,
+      })),
+    });
+  }
+
+  const sampleEmployeeTu = employeeTus[0];
+  await prisma.availabilityRule.deleteMany({ where: { tenantUserId: sampleEmployeeTu.id } });
+  await prisma.availabilityRule.createMany({
+    data: [
+      { tenantUserId: sampleEmployeeTu.id, dayOfWeek: 1, startMinute: 9 * 60, endMinute: 17 * 60 },
+      { tenantUserId: sampleEmployeeTu.id, dayOfWeek: 2, startMinute: 9 * 60, endMinute: 17 * 60 },
+      { tenantUserId: sampleEmployeeTu.id, dayOfWeek: 3, startMinute: 9 * 60, endMinute: 17 * 60 },
+      { tenantUserId: sampleEmployeeTu.id, dayOfWeek: 4, startMinute: 9 * 60, endMinute: 17 * 60 },
+      { tenantUserId: sampleEmployeeTu.id, dayOfWeek: 5, startMinute: 9 * 60, endMinute: 17 * 60 },
+    ],
+  });
+
+  const ptoEmployeeTu = employeeTus[Math.min(1, employeeCount - 1)];
+  const ptoStart = addDays(scheduleBase, 14);
+  const ptoEnd = addDays(scheduleBase, 18);
+  await prisma.ptoRequest.deleteMany({
+    where: { tenantUserId: ptoEmployeeTu.id, reason: "Demo PTO" },
+  });
+  await prisma.ptoRequest.create({
+    data: {
+      tenantId: tenant.id,
+      tenantUserId: ptoEmployeeTu.id,
+      startsOn: ptoStart,
+      endsOn: ptoEnd,
+      status: "APPROVED",
+      reason: "Demo PTO",
+    },
+  });
+
+  const exceptionTu = employeeTus[Math.min(2, employeeCount - 1)];
+  const exceptionDate = addDays(scheduleBase, 3);
+  exceptionDate.setUTCHours(0, 0, 0, 0);
+  await prisma.availabilityException.deleteMany({
+    where: { tenantUserId: exceptionTu.id, date: exceptionDate },
+  });
+  await prisma.availabilityException.create({
+    data: {
+      tenantUserId: exceptionTu.id,
+      date: exceptionDate,
+      available: false,
+      note: "Demo day off",
+    },
+  });
+
+  const constraintCtxByTu = new Map<string, EmployeeConstraintCtx>();
+  for (const tu of employeeTus) {
+    const [rules, exceptions, ptoRequests] = await Promise.all([
+      prisma.availabilityRule.findMany({ where: { tenantUserId: tu.id } }),
+      prisma.availabilityException.findMany({ where: { tenantUserId: tu.id } }),
+      prisma.ptoRequest.findMany({
+        where: { tenantUserId: tu.id, status: { in: ["REQUESTED", "APPROVED"] } },
+      }),
+    ]);
+    constraintCtxByTu.set(tu.id, {
+      rules,
+      exceptions,
+      ptoRequests: ptoRequests.map((p) => ({
+        startsOn: p.startsOn,
+        endsOn: p.endsOn,
+        status: p.status,
+      })),
+    });
+  }
+
+  const shiftById = new Map(shifts.map((s) => [s.id, s]));
+  const specById = new Map(shiftSpecs.map((s) => [s.id, s]));
+
   for (const spec of shiftSpecs) {
+    const shift = shiftById.get(spec.id)!;
+    const tz = SITE_TIMEZONES[spec.siteKey];
+    const shiftPayload = {
+      startsAt: shift.startsAt,
+      endsAt: shift.endsAt,
+      siteTimezone: tz,
+    };
     for (const idx of spec.assigneeIndices) {
-      assignments.push({
-        shiftId: spec.id,
-        userId: employeeUsers[idx].id,
+      const tu = employeeTus[idx];
+      const ctx = constraintCtxByTu.get(tu.id)!;
+      if (!seedCanAssign(shiftPayload, ctx, schedulingSettings)) {
+        console.warn(
+          `Seed skip assign: employee${idx + 1} blocked on shift ${spec.title} (${spec.id})`,
+        );
+        continue;
+      }
+      await prisma.shiftAssignment.upsert({
+        where: { shiftId_userId: { shiftId: spec.id, userId: employeeUsers[idx].id } },
+        create: { tenantId: tenant.id, shiftId: spec.id, userId: employeeUsers[idx].id },
+        update: {},
       });
     }
   }
 
-  await Promise.all(
-    assignments.map(({ shiftId, userId }) =>
-      prisma.shiftAssignment.upsert({
-        where: { shiftId_userId: { shiftId, userId } },
-        create: { tenantId: tenant.id, shiftId, userId },
-        update: {},
-      }),
-    ),
-  );
+  const publishedShift = shifts[0];
+  const swapTargetShift = shifts[1];
 
   const assignEmployee0 = await prisma.shiftAssignment.findFirst({
     where: { shiftId: publishedShift.id, userId: employeeUsers[0].id },
@@ -451,33 +590,31 @@ async function seedAcmeTenant(options: SeedOptions) {
     }
   }
 
-  const sampleEmployeeTu = employeeTus[0];
-  await prisma.availabilityRule.deleteMany({ where: { tenantUserId: sampleEmployeeTu.id } });
-  await prisma.availabilityRule.createMany({
-    data: [
-      { tenantUserId: sampleEmployeeTu.id, dayOfWeek: 1, startMinute: 9 * 60, endMinute: 17 * 60 },
-      { tenantUserId: sampleEmployeeTu.id, dayOfWeek: 3, startMinute: 9 * 60, endMinute: 17 * 60 },
-    ],
-  });
-
-  const ptoStart = new Date();
-  ptoStart.setUTCMonth(ptoStart.getUTCMonth() + 2, 1);
-  const ptoEnd = new Date(ptoStart);
-  ptoEnd.setUTCDate(ptoEnd.getUTCDate() + 4);
-
-  const existingPto = await prisma.ptoRequest.findFirst({
-    where: { tenantUserId: sampleEmployeeTu.id, reason: "Demo PTO" },
-  });
-  if (!existingPto) {
-    await prisma.ptoRequest.create({
-      data: {
-        tenantId: tenant.id,
-        tenantUserId: sampleEmployeeTu.id,
-        startsOn: ptoStart,
-        endsOn: ptoEnd,
-        reason: "Demo PTO",
+  const swapTargetSpec = specById.get(swapTargetShift.id)!;
+  const publishedSpec = specById.get(publishedShift.id)!;
+  const reqCtx = constraintCtxByTu.get(employeeTus[0].id)!;
+  const tgtCtx = constraintCtxByTu.get(employeeTus[Math.min(1, employeeCount - 1)].id)!;
+  if (
+    !seedCanAssign(
+      {
+        startsAt: swapTargetShift.startsAt,
+        endsAt: swapTargetShift.endsAt,
+        siteTimezone: SITE_TIMEZONES[swapTargetSpec.siteKey],
       },
-    });
+      reqCtx,
+      schedulingSettings,
+    ) ||
+    !seedCanAssign(
+      {
+        startsAt: publishedShift.startsAt,
+        endsAt: publishedShift.endsAt,
+        siteTimezone: SITE_TIMEZONES[publishedSpec.siteKey],
+      },
+      tgtCtx,
+      schedulingSettings,
+    )
+  ) {
+    console.warn("Seed: demo swap legs failed constraint check");
   }
 
   await prisma.auditLog.create({
@@ -487,7 +624,7 @@ async function seedAcmeTenant(options: SeedOptions) {
       action: "seed.completed",
       entityType: "system",
       metadata: {
-        version: 3,
+        version: 4,
         users: allTenantUsers.length,
         sites: sites.length,
         employeeCount,

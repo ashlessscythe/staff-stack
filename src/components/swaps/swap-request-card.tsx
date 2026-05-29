@@ -2,11 +2,11 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { SwapConstraintSummary } from "@/server/scheduling/swap-constraint-summary";
+import { SwapAcceptControls } from "@/components/swaps/swap-accept-controls";
 import {
-  acceptSwapFormAction,
   approveSwapFormAction,
   cancelSwapFormAction,
-  declineSwapFormAction,
   denySwapFormAction,
 } from "@/server/actions/swaps";
 
@@ -27,19 +27,48 @@ function formatShiftLine(shift: { title: string; startsAt: Date }) {
   })}`;
 }
 
+function ConstraintSummaryBlock({ summary }: { summary: SwapConstraintSummary }) {
+  return (
+    <div className="space-y-2 rounded-md border border-zinc-200 bg-zinc-50/80 p-2 text-xs dark:border-zinc-800 dark:bg-zinc-900/50">
+      <p className="font-medium text-zinc-700 dark:text-zinc-300">Scheduling constraints</p>
+      <ul className="space-y-1">
+        <li>
+          <span className="text-zinc-500">Requester:</span>{" "}
+          {summary.requesterLeg.blocking.length > 0
+            ? summary.requesterLeg.blocking.map((b) => b.message).join("; ")
+            : summary.requesterLeg.warnings.length > 0
+              ? summary.requesterLeg.warnings.map((w) => w.message).join("; ")
+              : "OK"}
+        </li>
+        <li>
+          <span className="text-zinc-500">Target:</span>{" "}
+          {summary.targetLeg.blocking.length > 0
+            ? summary.targetLeg.blocking.map((b) => b.message).join("; ")
+            : summary.targetLeg.warnings.length > 0
+              ? summary.targetLeg.warnings.map((w) => w.message).join("; ")
+              : "OK"}
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 export function SwapRequestCard({
   swap,
   tenantSlug,
   showAcceptDecline,
   showCancel,
   showApproveDeny,
+  constraintSummary,
 }: {
   swap: SwapCardData;
   tenantSlug: string;
   showAcceptDecline?: boolean;
   showCancel?: boolean;
   showApproveDeny?: boolean;
+  constraintSummary?: SwapConstraintSummary;
 }) {
+  const approveBlocked = constraintSummary?.hasBlocking ?? false;
   return (
     <Card>
       <CardHeader>
@@ -60,24 +89,16 @@ export function SwapRequestCard({
             <p className="text-zinc-600 dark:text-zinc-400">&ldquo;{swap.message}&rdquo;</p>
           ) : null}
         </div>
+        {constraintSummary && showApproveDeny && (
+          <ConstraintSummaryBlock summary={constraintSummary} />
+        )}
         <div className="flex flex-wrap gap-2">
-          {showAcceptDecline && (
-            <>
-              <form action={acceptSwapFormAction}>
-                <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                <input type="hidden" name="swapId" value={swap.id} />
-                <Button type="submit" size="sm">
-                  Accept
-                </Button>
-              </form>
-              <form action={declineSwapFormAction}>
-                <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                <input type="hidden" name="swapId" value={swap.id} />
-                <Button type="submit" size="sm" variant="outline">
-                  Decline
-                </Button>
-              </form>
-            </>
+          {showAcceptDecline && constraintSummary && (
+            <SwapAcceptControls
+              tenantSlug={tenantSlug}
+              swapId={swap.id}
+              targetLeg={constraintSummary.targetLeg}
+            />
           )}
           {showCancel && (
             <form action={cancelSwapFormAction}>
@@ -93,7 +114,7 @@ export function SwapRequestCard({
               <form action={approveSwapFormAction}>
                 <input type="hidden" name="tenantSlug" value={tenantSlug} />
                 <input type="hidden" name="swapId" value={swap.id} />
-                <Button type="submit" size="sm">
+                <Button type="submit" size="sm" disabled={approveBlocked}>
                   Approve
                 </Button>
               </form>

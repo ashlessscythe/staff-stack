@@ -1,6 +1,8 @@
 import Link from "next/link";
 
+import { SchedulingEnforcementForm } from "@/components/admin/scheduling-enforcement-form";
 import { TimeDisplayFormatForm } from "@/components/admin/time-display-format-form";
+import { schedulingSettingsFromTenant } from "@/lib/scheduling-settings";
 import { hasPermission, permissionsForRole } from "@/lib/rbac";
 import { requireTenantShell } from "@/server/tenant-context";
 
@@ -39,10 +41,16 @@ export default async function AdminSettingsPage({
       </div>
 
       {canWrite ? (
-        <TimeDisplayFormatForm
-          tenantSlug={tenantSlug}
-          currentFormat={shell.tenant.timeDisplayFormat}
-        />
+        <div className="space-y-6">
+          <TimeDisplayFormatForm
+            tenantSlug={tenantSlug}
+            currentFormat={shell.tenant.timeDisplayFormat}
+          />
+          <SchedulingEnforcementForm
+            tenantSlug={tenantSlug}
+            currentMode={schedulingSettingsFromTenant(shell.tenant.settings).enforceAvailability}
+          />
+        </div>
       ) : (
         <p className="text-sm text-zinc-600 dark:text-zinc-300">
           Current time display:{" "}
