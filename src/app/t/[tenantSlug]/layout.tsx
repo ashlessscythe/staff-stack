@@ -2,6 +2,8 @@ import Link from "next/link";
 
 import { TenantUserMenu } from "@/components/tenant/tenant-user-menu";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { hasPermission, permissionsForRole } from "@/lib/rbac";
+import { getActionableSwapCount } from "@/lib/swap-counts";
 import { requireTenantShell } from "@/server/tenant-context";
 
 export default async function TenantLayout({
@@ -13,6 +15,15 @@ export default async function TenantLayout({
 }) {
   const { tenantSlug } = await params;
   const shell = await requireTenantShell(tenantSlug);
+  const userId = shell.tenantUser.userId;
+
+  const canApprove = shell.memberships.some((m) =>
+    hasPermission(permissionsForRole(m.role, m.permissions), "swap:approve"),
+  );
+  const canRequest = shell.memberships.some((m) =>
+    hasPermission(permissionsForRole(m.role, m.permissions), "swap:request"),
+  );
+  const swapSummary = await getActionableSwapCount(shell.tenant.id, userId, canApprove, canRequest);
 
   return (
     <div className="min-h-screen bg-[color:var(--ss-background)] text-[color:var(--ss-foreground)]">
@@ -41,10 +52,15 @@ export default async function TenantLayout({
                 Schedule
               </Link>
               <Link
-                className="text-[color:var(--ss-muted-foreground)] hover:text-[color:var(--ss-foreground)]"
-                href={`/t/${tenantSlug}/swaps`}
+                className="relative text-[color:var(--ss-muted-foreground)] hover:text-[color:var(--ss-foreground)]"
+                href={`/t/${tenantSlug}/swaps${swapSummary.hrefSuffix}`}
               >
                 Swaps
+                {swapSummary.count > 0 ? (
+                  <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                    {swapSummary.count}
+                  </span>
+                ) : null}
               </Link>
               <Link
                 className="text-[color:var(--ss-muted-foreground)] hover:text-[color:var(--ss-foreground)]"

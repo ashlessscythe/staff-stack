@@ -394,7 +394,7 @@ async function seedAcmeTenant(options: SeedOptions) {
   );
 
   const publishedShift = shifts[0];
-  const draftShift = shifts[5];
+  const swapTargetShift = shifts[1];
 
   const assignments: { shiftId: string; userId: string }[] = [];
   for (const spec of shiftSpecs) {
@@ -420,13 +420,13 @@ async function seedAcmeTenant(options: SeedOptions) {
     where: { shiftId: publishedShift.id, userId: employeeUsers[0].id },
   });
   const swapTargetUser = employeeUsers[Math.min(1, employeeCount - 1)];
-  const assignEmployee1Draft = await prisma.shiftAssignment.upsert({
+  const assignEmployee1Target = await prisma.shiftAssignment.upsert({
     where: {
-      shiftId_userId: { shiftId: draftShift.id, userId: swapTargetUser.id },
+      shiftId_userId: { shiftId: swapTargetShift.id, userId: swapTargetUser.id },
     },
     create: {
       tenantId: tenant.id,
-      shiftId: draftShift.id,
+      shiftId: swapTargetShift.id,
       userId: swapTargetUser.id,
     },
     update: {},
@@ -442,9 +442,9 @@ async function seedAcmeTenant(options: SeedOptions) {
           tenantId: tenant.id,
           status: SwapStatus.REQUESTED,
           requesterAssignmentId: assignEmployee0.id,
-          targetAssignmentId: assignEmployee1Draft.id,
+          targetAssignmentId: assignEmployee1Target.id,
           fromShiftId: publishedShift.id,
-          toShiftId: draftShift.id,
+          toShiftId: swapTargetShift.id,
           message: "Demo swap request",
         },
       });

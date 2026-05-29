@@ -2,7 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScheduleShiftsTable } from "@/components/schedule/schedule-shifts-table";
+import {
+  ScheduleShiftsTable,
+  type AssignmentSwapInfo,
+} from "@/components/schedule/schedule-shifts-table";
 import { prisma } from "@/lib/db";
 import { hasPermission, permissionsForRole } from "@/lib/rbac";
 import { weekStartsOnFromSettings } from "@/lib/tenant-settings";
@@ -23,12 +26,15 @@ export default async function SchedulePage({
   const canAssign = shell.memberships.some((m) =>
     hasPermission(permissionsForRole(m.role, m.permissions), "assignment:write"),
   );
+  const canRequestSwap = shell.memberships.some((m) =>
+    hasPermission(permissionsForRole(m.role, m.permissions), "swap:request"),
+  );
 
   const from = new Date();
   const to = new Date();
   to.setUTCDate(to.getUTCDate() + 30);
 
-  const [shifts, sites, tenantUsers] = await Promise.all([
+  const [shifts, sites, tenantUsers, activeSwaps] = await Promise.all([
     prisma.shift.findMany({
       where: {
         tenantId: shell.tenant.id,
@@ -46,12 +52,44 @@ export default async function SchedulePage({
       where: { tenantId: shell.tenant.id, isActive: true },
       include: { user: { select: { id: true, email: true, name: true } } },
     }),
+    prisma.shiftSwap.findMany({
+      where: {
+        tenantId: shell.tenant.id,
+        status: { in: ["REQUESTED", "PENDING_APPROVAL"] },
+      },
+      select: {
+        status: true,
+        requesterAssignmentId: true,
+        targetAssignmentId: true,
+        requesterAssignment: { select: { userId: true } },
+        targetAssignment: { select: { userId: true } },
+      },
+    }),
   ]);
 
   const defaultSiteId = sites[0]?.id ?? "";
 
   const userEmailById = Object.fromEntries(tenantUsers.map((tu) => [tu.userId, tu.user.email]));
   const weekStartsOn = weekStartsOnFromSettings(shell.tenant.settings);
+  const currentUserId = shell.tenantUser.userId;
+
+  const pendingSwapsByAssignmentId: Record<string, AssignmentSwapInfo> = {};
+  for (const swap of activeSwaps) {
+    const status = swap.status as AssignmentSwapInfo["status"];
+    const requesterInfo: AssignmentSwapInfo = {
+      status,
+      role: swap.requesterAssignment.userId === currentUserId ? "requester" : "other",
+    };
+    pendingSwapsByAssignmentId[swap.requesterAssignmentId] = requesterInfo;
+
+    if (swap.targetAssignmentId && swap.targetAssignment) {
+      const targetInfo: AssignmentSwapInfo = {
+        status,
+        role: swap.targetAssignment.userId === currentUserId ? "target" : "other",
+      };
+      pendingSwapsByAssignmentId[swap.targetAssignmentId] = targetInfo;
+    }
+  }
 
   const tableShifts = shifts.map((shift) => ({
     id: shift.id,
@@ -136,8 +174,11 @@ export default async function SchedulePage({
         currentUserId={shell.tenantUser.userId}
         weekStartsOn={weekStartsOn}
         shifts={tableShifts}
+        allShifts={tableShifts}
         canWrite={canWrite}
         canAssign={canAssign}
+        canRequestSwap={canRequestSwap}
+        pendingSwapsByAssignmentId={pendingSwapsByAssignmentId}
         userEmailById={userEmailById}
         tenantUsers={tenantUsers.map((tu) => ({ userId: tu.userId, email: tu.user.email }))}
       />

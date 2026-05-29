@@ -32,8 +32,10 @@ enum ShiftStatus {
 
 enum SwapStatus {
   REQUESTED
+  PENDING_APPROVAL
   APPROVED
   DENIED
+  TARGET_DECLINED
   CANCELLED
 }
 
