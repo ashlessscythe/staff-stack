@@ -3,7 +3,7 @@ import * as argon2 from "argon2";
 
 const prisma = new PrismaClient();
 
-const DEMO_PASSWORD = "ChangeMe!123456";
+const DEMO_PASSWORD = "Admin123!";
 
 async function upsertUser(email: string, name: string) {
   const passwordHash = await argon2.hash(DEMO_PASSWORD);
@@ -242,8 +242,11 @@ async function main() {
       slug: "medstaff",
       settings: { theme: "day", weekStartsOn: 0 },
       features: { analytics: false },
+      timeDisplayFormat: "TWENTY_FOUR_HOUR",
     },
-    update: {},
+    update: {
+      timeDisplayFormat: "TWENTY_FOUR_HOUR",
+    },
   });
 
   const medSite = await prisma.site.upsert({

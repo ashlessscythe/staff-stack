@@ -6,21 +6,14 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { hasPermission, permissionsForRole } from "@/lib/rbac";
+import { parseTimeToMinutes } from "@/lib/time-format";
 import { requireTenantShell } from "@/server/tenant-context";
 
 const ruleSchema = z.object({
   tenantSlug: z.string().min(1),
   dayOfWeek: z.coerce.number().int().min(0).max(6),
-  startMinute: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .max(24 * 60),
-  endMinute: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .max(24 * 60),
+  startTime: z.string().min(1),
+  endTime: z.string().min(1),
 });
 
 export async function addAvailabilityRuleAction(formData: FormData) {
@@ -30,8 +23,8 @@ export async function addAvailabilityRuleAction(formData: FormData) {
   const parsed = ruleSchema.safeParse({
     tenantSlug: formData.get("tenantSlug"),
     dayOfWeek: formData.get("dayOfWeek"),
-    startMinute: formData.get("startMinute"),
-    endMinute: formData.get("endMinute"),
+    startTime: formData.get("startTime"),
+    endTime: formData.get("endTime"),
   });
   if (!parsed.success) throw new Error("Invalid form");
 
@@ -41,12 +34,18 @@ export async function addAvailabilityRuleAction(formData: FormData) {
   );
   if (!ok) throw new Error("Forbidden");
 
+  const format = shell.tenant.timeDisplayFormat;
+  const startMinute = parseTimeToMinutes(parsed.data.startTime, format);
+  const endMinute = parseTimeToMinutes(parsed.data.endTime, format);
+  if (startMinute === null || endMinute === null) throw new Error("Invalid time");
+  if (startMinute >= endMinute) throw new Error("End time must be after start time");
+
   await prisma.availabilityRule.create({
     data: {
       tenantUserId: shell.tenantUser.id,
       dayOfWeek: parsed.data.dayOfWeek,
-      startMinute: parsed.data.startMinute,
-      endMinute: parsed.data.endMinute,
+      startMinute,
+      endMinute,
     },
   });
 

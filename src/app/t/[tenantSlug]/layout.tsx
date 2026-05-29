@@ -60,9 +60,9 @@ export default async function TenantLayout({
               </Link>
               <Link
                 className="text-[color:var(--ss-muted-foreground)] hover:text-[color:var(--ss-foreground)]"
-                href={`/t/${tenantSlug}/admin/api-keys`}
+                href={`/t/${tenantSlug}/admin`}
               >
-                API keys
+                Admin
               </Link>
             </nav>
             <ThemeToggle />

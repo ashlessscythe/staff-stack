@@ -4,7 +4,14 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 
 export type TenantShell = {
-  tenant: { id: string; name: string; slug: string; settings: unknown; features: unknown };
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    settings: unknown;
+    features: unknown;
+    timeDisplayFormat: import("@prisma/client").TimeDisplayFormat;
+  };
   tenantUser: { id: string; userId: string };
   user: { name: string | null; email: string | null };
   memberships: {
