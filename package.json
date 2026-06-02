@@ -76,6 +76,9 @@
     "typescript-eslint": "^8.59.3",
     "vitest": "^4.1.6"
   },
+  "overrides": {
+    "postcss": "^8.5.14"
+  },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,css,md,json,yml,yaml}": "prettier --write"
   },
